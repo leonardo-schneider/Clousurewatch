@@ -1,0 +1,12 @@
+pandas
+numpy
+lightgbm
+scikit-learn
+imbalanced-learn
+vaderSentiment
+matplotlib
+seaborn
+tqdm
+joblib
+python-dateutil
+pyarrow

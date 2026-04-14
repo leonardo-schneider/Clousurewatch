@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# Local environment
+.env
+.env.*
+
+# Large/raw/generated project artifacts
+data/raw/*
+data/processed/*
+models/*
+figures/*
+
+# Keep empty project directories tracked
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!models/.gitkeep
+!figures/.gitkeep
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
