@@ -25,7 +25,7 @@ from tqdm import tqdm
 # ── allow running from repo root or scripts/ ──────────────────────────────
 sys.path.insert(0, str(Path(__file__).parent))
 from config_00 import (
-    RAW_DIR, PROC_DIR,
+    RAW_DIR, PROC_DIR, ENCODING,
     PRIMARY_CITIES, FALLBACK_STATES, MIN_CLOSED_THRESHOLD,
 )
 
@@ -51,7 +51,7 @@ def is_restaurant(cats: str | None) -> bool:
 def stream_json(path: Path, max_rows: int | None = None) -> list[dict]:
     """Read a Yelp JSON file (one JSON object per line)."""
     rows = []
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, "r", encoding=ENCODING) as f:
         for i, line in enumerate(tqdm(f, desc=f"Reading {path.name}")):
             if max_rows and i >= max_rows:
                 break
@@ -139,7 +139,7 @@ def load_reviews(business_ids: set) -> pd.DataFrame:
     assert path.exists(), f"Missing: {path}"
 
     rows = []
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, "r", encoding=ENCODING) as f:
         for line in tqdm(f, desc="Streaming reviews"):
             r = json.loads(line)
             if r["business_id"] in business_ids:

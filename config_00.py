@@ -7,17 +7,27 @@ University ML Final Project
 from pathlib import Path
 
 # ── Paths ──────────────────────────────────────────────────────────────────
-RAW_DIR   = Path("data/raw")          # drop Yelp JSON files here
+RAW_DIR   = Path("data/raw/Yelp JSON")  # extracted Yelp JSON files live here
 PROC_DIR  = Path("data/processed")
 MODEL_DIR = Path("models")
 FIG_DIR   = Path("figures")
+ENCODING  = "utf-8"
 
 for d in [RAW_DIR, PROC_DIR, MODEL_DIR, FIG_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
 # ── Geography ──────────────────────────────────────────────────────────────
 # Start Tampa; expand to all FL if n_closed < MIN_CLOSED_THRESHOLD
-PRIMARY_CITIES  = ["Tampa"]
+PRIMARY_CITIES = [
+    "Tampa",
+    "Clearwater",
+    "Saint Petersburg",
+    "St. Petersburg",
+    "Largo",
+    "Brandon",
+    "Palm Harbor",
+    "New Port Richey",
+]
 FALLBACK_STATES = ["FL"]
 MIN_CLOSED_THRESHOLD = 200   # minimum closed restaurants needed
 
