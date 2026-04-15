@@ -14,6 +14,8 @@ Outputs (data/processed/):
     tips.parquet         — tips / owner responses
 """
 
+from __future__ import annotations
+
 import json, sys
 from pathlib import Path
 from datetime import datetime
