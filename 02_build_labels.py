@@ -86,42 +86,37 @@ def assign_anchor(reviews_biz: pd.DataFrame) -> pd.Timestamp | None:
 # Label construction
 # ─────────────────────────────────────────────────────────────────────────────
 
-def build_label(biz_row: pd.Series,
-                reviews_biz: pd.DataFrame,
-                anchor: pd.Timestamp) -> int:
+def build_label(biz_row, reviews_biz, anchor):
     """
-    Label = 1 if business CLOSED within [anchor, anchor + OUTCOME_MONTHS).
+    Label = 1 if review activity stops within [anchor, anchor + 6 months).
 
-    We use two signals:
-      1. Yelp is_open == 0  (permanent closure flag)
-      2. Review activity drops to zero after anchor (operational death proxy)
+    We completely ignore is_open. Instead we use behavioral evidence:
+    - If the last review EVER is before anchor + 6 months → closed in window
+    - If reviews continue well past anchor + 6 months → still open in window
 
-    A business is labeled 1 only if BOTH:
-      - is_open == 0 (Yelp says closed), AND
-      - The last review before anchor+6m predates anchor+6m by ≤ 60 days
-        (confirms activity stopped, not just a data gap)
-
-    This reduces label noise from temporarily-closed or data-sparse businesses.
+    This makes labels consistent across all anchor years.
     """
-    outcome_end = anchor + relativedelta(months=OUTCOME_MONTHS)
+    from dateutil.relativedelta import relativedelta
+    outcome_end = anchor + relativedelta(months=6)
 
-    # Fast path: if Yelp says open, label 0
-    if biz_row["closed_label_raw"] == 0:
+    if reviews_biz.empty:
+        return 0  # no reviews = exclude, not closure
+
+    last_review_ever = reviews_biz["date"].max()
+
+    # Business has reviews after outcome window → was open during window
+    if last_review_ever > outcome_end:
         return 0
 
-    # Business is flagged closed by Yelp — check if closure happened in window
-    post_anchor_reviews = reviews_biz[reviews_biz["date"] >= anchor]
-
-    if post_anchor_reviews.empty:
-        # No reviews at all after anchor: likely already closed → label 1
+    # Last review ever is before outcome_end → activity stopped in window
+    # Require at least a 6-month silence to confirm (not just data gap)
+    silence_days = (last_review_ever - anchor).days
+    if last_review_ever < anchor:
+        # Already silent before anchor — was dying before obs window ended
+        return 1
+    if last_review_ever <= outcome_end:
         return 1
 
-    last_review_after_anchor = post_anchor_reviews["date"].max()
-    if last_review_after_anchor <= outcome_end:
-        # Last activity is within outcome window → closure happened in window
-        return 1
-
-    # Reviews continue well past outcome_end → closure is later, label 0 for now
     return 0
 
 
