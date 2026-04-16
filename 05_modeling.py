@@ -11,6 +11,7 @@ Run:
 """
 
 import sys, warnings, json
+import copy
 from pathlib import Path
 
 import numpy as np
@@ -18,6 +19,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
 from sklearn.metrics import (
@@ -27,6 +29,7 @@ from sklearn.metrics import (
     precision_recall_curve, roc_curve,
 )
 from sklearn.model_selection import StratifiedKFold
+from xgboost import XGBClassifier
 import lightgbm as lgb
 import joblib
 
@@ -52,21 +55,29 @@ plt.rcParams.update({
 # ─────────────────────────────────────────────────────────────────────────────
 META_COLS = {"business_id", TARGET_COL, "anchor_date", "city", "state"}
 
-LGBM_PARAMS = {
-    "objective":        "binary",
-    "metric":           ["average_precision", "auc"],
-    "boosting_type":    "gbdt",
-    "learning_rate":    0.05,
-    "num_leaves":       31,
-    "min_child_samples": 20,
-    "subsample":        0.8,
-    "colsample_bytree": 0.8,
-    "reg_alpha":        0.1,
-    "reg_lambda":       1.0,
-    "n_estimators":     1000,
-    "class_weight":     "balanced",
-    "random_state":     RANDOM_SEED,
-    "verbose":          -1,
+MODELS = {
+    "Logistic Regression": Pipeline([
+        ("scaler", StandardScaler()),
+        ("clf", LogisticRegression(
+            class_weight="balanced", max_iter=1000,
+            C=1.0, random_state=RANDOM_SEED))
+    ]),
+    "Random Forest": RandomForestClassifier(
+        n_estimators=500, class_weight="balanced",
+        max_features="sqrt", min_samples_leaf=5,
+        random_state=RANDOM_SEED, n_jobs=-1),
+    "XGBoost": XGBClassifier(
+        n_estimators=500, learning_rate=0.05,
+        max_depth=5, subsample=0.8,
+        colsample_bytree=0.8, scale_pos_weight=15,
+        eval_metric="aucpr", early_stopping_rounds=50,
+        random_state=RANDOM_SEED, verbosity=0),
+    "LightGBM": lgb.LGBMClassifier(
+        n_estimators=1000, learning_rate=0.05,
+        num_leaves=31, min_child_samples=20,
+        subsample=0.8, colsample_bytree=0.8,
+        class_weight="balanced",
+        random_state=RANDOM_SEED, verbose=-1),
 }
 
 
@@ -176,15 +187,36 @@ def run_lightgbm(X_train, y_train, X_val, y_val):
     return model, y_prob
 
 
+def fit_model(name, model, X_tr, y_tr, X_va, y_va):
+    if name == "XGBoost":
+        model.fit(X_tr, y_tr,
+                  eval_set=[(X_va, y_va)],
+                  verbose=False)
+    elif name == "LightGBM":
+        model.fit(X_tr, y_tr,
+                  eval_set=[(X_va, y_va)],
+                  callbacks=[lgb.early_stopping(50, verbose=False),
+                             lgb.log_evaluation(period=-1)])
+    else:
+        model.fit(X_tr, y_tr)
+    return model
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Plots
 # ─────────────────────────────────────────────────────────────────────────────
 
-def plot_pr_roc(results: dict, split_name: str, save_name: str):
+def plot_pr_roc(test_probs: dict, y_true, split_name: str, save_name: str):
     fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+    colors = {
+        "Logistic Regression": "#2E86AB",
+        "Random Forest": "#7A5195",
+        "XGBoost": "#FFA600",
+        "LightGBM": "#E84855",
+    }
 
-    for model_name, (y_true, y_prob) in results.items():
-        color = "#E84855" if "LightGBM" in model_name else "#2E86AB"
+    for model_name, y_prob in test_probs.items():
+        color = colors.get(model_name, "#555555")
         auc_pr = average_precision_score(y_true, y_prob)
         auc_roc = roc_auc_score(y_true, y_prob)
 
@@ -383,5 +415,138 @@ def main():
     print("\n  Done. Check figures/ and models/ directories.")
 
 
+def main_shootout():
+    print("=" * 60)
+    print("STEP 5 - Modeling")
+    print("=" * 60)
+
+    feat = pd.read_parquet(PROC_DIR / "features.parquet")
+
+    feature_cols = [c for c in feat.columns if c not in META_COLS]
+    print(f"\n  Feature columns: {len(feature_cols)}")
+
+    X_all = feat[feature_cols].copy()
+    y_all = feat[TARGET_COL].copy()
+
+    print("\n[1] Train/Test Split")
+    TEST_CUTOFF = pd.Timestamp("2020-06-01")
+    feat["anchor_date"] = pd.to_datetime(feat["anchor_date"])
+    train_val_df = feat[feat["anchor_date"] < TEST_CUTOFF].copy()
+    test_df = feat[feat["anchor_date"] >= TEST_CUTOFF].copy()
+    print(f"  Train/Val: {len(train_val_df):,}  |  Test: {len(test_df):,}")
+    print(f"  Train closed: {train_val_df[TARGET_COL].sum()} ({train_val_df[TARGET_COL].mean():.1%})")
+    print(f"  Test  closed: {test_df[TARGET_COL].sum()} ({test_df[TARGET_COL].mean():.1%})")
+    train_val_idx = train_val_df.index
+    test_idx = test_df.index
+
+    X_trainval = X_all.loc[train_val_idx]
+    y_trainval = y_all.loc[train_val_idx]
+    X_test = X_all.loc[test_idx]
+    y_test = y_all.loc[test_idx]
+
+    print(f"\n[2] {N_FOLDS}-Fold Time-Aware Cross Validation")
+    folds = time_aware_cv_folds(train_val_df.reset_index(drop=True), N_FOLDS)
+    all_cv_results = {name: [] for name in MODELS}
+
+    for fold_i, (tr_idx, va_idx) in enumerate(folds):
+        X_tr = X_trainval.iloc[tr_idx]
+        y_tr = y_trainval.iloc[tr_idx]
+        X_va = X_trainval.iloc[va_idx]
+        y_va = y_trainval.iloc[va_idx]
+        medians = X_tr.median()
+        X_tr = X_tr.fillna(medians)
+        X_va = X_va.fillna(medians)
+
+        for name, model in MODELS.items():
+            m = copy.deepcopy(model)
+            try:
+                m = fit_model(name, m, X_tr, y_tr, X_va, y_va)
+                y_prob = m.predict_proba(X_va)[:, 1]
+                metrics = compute_metrics(y_va, y_prob)
+                all_cv_results[name].append(metrics)
+                print(f"  Fold {fold_i+1} {name:20s}: AUC-PR={metrics['AUC_PR']:.3f}  AUC-ROC={metrics['AUC_ROC']:.3f}")
+            except Exception as e:
+                print(f"  Fold {fold_i+1} {name}: FAILED - {e}")
+
+    print("\n  CV SUMMARY (mean +/- std across folds)")
+    for name, metrics_list in all_cv_results.items():
+        if not metrics_list:
+            print(f"\n  {name}: no successful folds")
+            continue
+        df_m = pd.DataFrame(metrics_list)
+        print(f"\n  {name}:")
+        for col in df_m.columns:
+            print(f"    {col:12s}: {df_m[col].mean():.4f} +/- {df_m[col].std():.4f}")
+
+    print("\n[3] Final Models (train on full train+val, eval on held-out test)")
+    train_medians = X_trainval.median()
+    X_tr_full = X_trainval.fillna(train_medians)
+    X_te_full = X_test.fillna(train_medians)
+
+    print("\n=== FINAL LEADERBOARD (held-out test) ===")
+    leaderboard = []
+    test_probs = {}
+    final_models = {}
+
+    for name, model in MODELS.items():
+        m = copy.deepcopy(model)
+        try:
+            m = fit_model(name, m, X_tr_full, y_trainval, X_te_full, y_test)
+            y_prob = m.predict_proba(X_te_full)[:, 1]
+            metrics = compute_metrics(y_test, y_prob)
+            metrics["Model"] = name
+            leaderboard.append(metrics)
+            test_probs[name] = y_prob
+            final_models[name] = m
+            joblib.dump(m, MODEL_DIR / f"{name.replace(' ','_').lower()}.pkl")
+            print(f"  {name:20s}: AUC-PR={metrics['AUC_PR']:.4f}  AUC-ROC={metrics['AUC_ROC']:.4f}  F1={metrics['F1']:.4f}")
+        except Exception as e:
+            print(f"  {name}: FAILED - {e}")
+
+    if not leaderboard:
+        raise RuntimeError("No models trained successfully.")
+
+    lb_df = pd.DataFrame(leaderboard).set_index("Model").sort_values("AUC_PR", ascending=False)
+    lb_df.to_csv(MODEL_DIR / "leaderboard.csv")
+    print(f"\nBest model: {lb_df.index[0]} (AUC-PR={lb_df.iloc[0]['AUC_PR']:.4f})")
+    print(f"\n  Models saved to {MODEL_DIR}/")
+
+    results_summary = {
+        "cv": {
+            name: {
+                k: float(np.mean([m[k] for m in metrics_list]))
+                for k in metrics_list[0]
+            }
+            for name, metrics_list in all_cv_results.items()
+            if metrics_list
+        },
+        "test": {
+            row["Model"]: {
+                k: float(v)
+                for k, v in row.items()
+                if k != "Model"
+            }
+            for row in leaderboard
+        },
+        "best_model": str(lb_df.index[0]),
+    }
+    with open(MODEL_DIR / "results_summary.json", "w") as f:
+        json.dump(results_summary, f, indent=2)
+
+    print("\n[4] Generating figures")
+    plot_pr_roc(
+        test_probs=test_probs,
+        y_true=y_test,
+        split_name="Held-Out Test Set",
+        save_name="10_pr_roc_test.png",
+    )
+    if "LightGBM" in final_models:
+        plot_feature_importance(final_models["LightGBM"], feature_cols)
+    for model_name, y_prob in test_probs.items():
+        plot_confusion(y_test, y_prob, model_name=model_name)
+
+    print("\n  Done. Check figures/ and models/ directories.")
+
+
 if __name__ == "__main__":
-    main()
+    main_shootout()
