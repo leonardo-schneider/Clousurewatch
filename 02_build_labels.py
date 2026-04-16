@@ -65,9 +65,10 @@ def assign_anchor(reviews_biz: pd.DataFrame) -> pd.Timestamp | None:
     # Snap to month boundary for cleanliness
     anchor = pct80.replace(day=1)
 
-    # Apply temporal bounds
-    anchor = max(anchor, EARLIEST_ANCHOR_DT)
-    anchor = min(anchor, LATEST_ANCHOR_DT)
+    # Drop businesses whose natural anchor falls outside valid range
+    # Do NOT clip — clipping creates fake anchors for already-dead businesses
+    if anchor < EARLIEST_ANCHOR_DT or anchor > LATEST_ANCHOR_DT:
+        return None
 
     # Check we have enough history
     obs_start = anchor - relativedelta(months=OBS_MONTHS)
