@@ -17,6 +17,8 @@ Output:
         — one row per restaurant with anchor_date + target label
 """
 
+from __future__ import annotations
+
 import sys
 from pathlib import Path
 
