@@ -151,10 +151,22 @@ def build_features_one(
             else np.nan
         )
     else:
-        for k in ["mean_stars_obs", "std_stars_obs", "rating_trend_slope",
-                  "rating_trend_3m", "pct_1star", "pct_5star",
-                  "stars_recent_3m", "stars_early_3m", "stars_delta_3m"]:
-            feat[k] = np.nan
+        if n_rev > 0:
+            stars = obs_reviews.sort_values("date")["stars"]
+            feat["mean_stars_obs"] = float(stars.mean())
+            feat["pct_1star"] = float((stars == 1).mean())
+            feat["pct_5star"] = float((stars == 5).mean())
+        else:
+            feat["mean_stars_obs"] = 3.0
+            feat["pct_1star"] = 0.0
+            feat["pct_5star"] = 0.0
+
+        feat["std_stars_obs"] = 0.0
+        feat["rating_trend_slope"] = 0.0
+        feat["rating_trend_3m"] = 0.0
+        feat["stars_recent_3m"] = np.nan
+        feat["stars_early_3m"] = np.nan
+        feat["stars_delta_3m"] = np.nan
 
     # ── C. VADER sentiment ─────────────────────────────────────────────────
     if n_rev >= MIN_REVIEWS_FOR_TREND and VADER_AVAILABLE:
