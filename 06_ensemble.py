@@ -147,3 +147,110 @@ def stacking_ensemble(
     )
     meta_lr.fit(meta_val_features, y_meta_val)
     return meta_lr.predict_proba(meta_test_features)[:, 1]
+
+
+# ── Main ───────────────────────────────────────────────────────────────────────
+
+def main():
+    print("=" * 60)
+    print("STEP 6 — Ensemble Strategy Ladder")
+    print("=" * 60)
+
+    # ── Load feature matrix ────────────────────────────────────────────────
+    feat = pd.read_parquet(PROC_DIR / "features.parquet")
+    biz  = pd.read_parquet(PROC_DIR / "businesses.parquet")[
+        ["business_id", "name", "stars"]
+    ]
+
+    feat["anchor_date"] = pd.to_datetime(feat["anchor_date"])
+    feature_cols = [c for c in feat.columns if c not in META_COLS]
+
+    TEST_CUTOFF  = pd.Timestamp("2020-06-01")
+    train_df = feat[feat["anchor_date"] < TEST_CUTOFF].copy()
+    test_df  = feat[feat["anchor_date"] >= TEST_CUTOFF].copy()
+    print(f"\n  Train: {len(train_df):,}  |  Test: {len(test_df):,}")
+
+    train_medians = train_df[feature_cols].median()
+    X_train = train_df[feature_cols].fillna(train_medians)
+    y_train = train_df[TARGET_COL]
+    X_test  = test_df[feature_cols].fillna(train_medians)
+    y_test  = test_df[TARGET_COL]
+
+    # ── Load models ────────────────────────────────────────────────────────
+    print("\n  Loading models...")
+    models = load_models(MODEL_DIR)
+    print(f"  Loaded: {list(models.keys())}")
+
+    # ── Individual predictions ─────────────────────────────────────────────
+    test_probs = get_probabilities(models, X_test)
+
+    # ── Strategy 1: Simple average ─────────────────────────────────────────
+    print("\n[1] Simple Average")
+    sa_prob    = simple_average(test_probs)
+    sa_metrics = compute_metrics(y_test, sa_prob)
+    print(f"  AUC-PR={sa_metrics['AUC_PR']:.4f}  "
+          f"AUC-ROC={sa_metrics['AUC_ROC']:.4f}  F1={sa_metrics['F1']:.4f}")
+
+    # ── Strategy 2: Weighted average ───────────────────────────────────────
+    print("\n[2] Weighted Average (by CV AUC-PR)")
+    wa_prob    = weighted_average(test_probs, CV_AUC_PR)
+    wa_metrics = compute_metrics(y_test, wa_prob)
+    print(f"  AUC-PR={wa_metrics['AUC_PR']:.4f}  "
+          f"AUC-ROC={wa_metrics['AUC_ROC']:.4f}  F1={wa_metrics['F1']:.4f}")
+
+    # ── Pick best so far ───────────────────────────────────────────────────
+    results = {
+        "xgboost_baseline":  {"AUC_PR": BASELINE_AUC_PR},
+        "simple_average":    sa_metrics,
+        "weighted_average":  wa_metrics,
+    }
+
+    best_prob, best_name, best_auc = (
+        (sa_prob, "simple_average", sa_metrics["AUC_PR"])
+        if sa_metrics["AUC_PR"] >= wa_metrics["AUC_PR"]
+        else (wa_prob, "weighted_average", wa_metrics["AUC_PR"])
+    )
+
+    # ── Strategy 3: Stacking (only if neither beat baseline) ──────────────
+    if best_auc <= BASELINE_AUC_PR:
+        print("\n[3] Stacking (meta-LogisticRegression)")
+        print("  Neither strategy beat baseline — escalating...")
+        st_prob    = stacking_ensemble(models, X_train, y_train, X_test)
+        st_metrics = compute_metrics(y_test, st_prob)
+        print(f"  AUC-PR={st_metrics['AUC_PR']:.4f}  "
+              f"AUC-ROC={st_metrics['AUC_ROC']:.4f}  F1={st_metrics['F1']:.4f}")
+        results["stacking"] = st_metrics
+        if st_metrics["AUC_PR"] > best_auc:
+            best_prob, best_name, best_auc = st_prob, "stacking", st_metrics["AUC_PR"]
+    else:
+        print("\n[3] Stacking — skipped (not needed)")
+
+    # ── Summary ────────────────────────────────────────────────────────────
+    improvement = (best_auc - BASELINE_AUC_PR) / BASELINE_AUC_PR
+    print(f"\n  ✓ Winner:   {best_name}")
+    print(f"  ✓ AUC-PR:  {best_auc:.4f}  (baseline: {BASELINE_AUC_PR:.4f})")
+    print(f"  ✓ Change:  {improvement:+.1%} vs XGBoost")
+
+    results["winner"] = best_name
+    results["winner_auc_pr"] = best_auc
+
+    # ── Save outputs ───────────────────────────────────────────────────────
+    with open(MODEL_DIR / "ensemble_results.json", "w") as f:
+        json.dump(results, f, indent=2)
+    print(f"\n  Saved → {MODEL_DIR}/ensemble_results.json")
+
+    # Build predictions parquet (test set only — these are the UI records)
+    sig_cols_present = [c for c in SIGNAL_COLS if c in test_df.columns]
+    pred_df = test_df[
+        ["business_id", "anchor_date", TARGET_COL] + sig_cols_present
+    ].copy()
+    pred_df["risk_score"] = best_prob
+    pred_df = pred_df.merge(biz, on="business_id", how="left")
+    pred_df.to_parquet(PROC_DIR / "ensemble_predictions.parquet", index=False)
+    print(f"  Saved → {PROC_DIR}/ensemble_predictions.parquet")
+    print(f"  Records: {len(pred_df):,}  |  "
+          f"Closed: {pred_df[TARGET_COL].sum()} ({pred_df[TARGET_COL].mean():.1%})")
+
+
+if __name__ == "__main__":
+    main()
