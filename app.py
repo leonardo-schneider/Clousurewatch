@@ -95,3 +95,63 @@ def load_predictions() -> pd.DataFrame:
             "Run the ensemble script first:  python 06_ensemble.py"
         )
     return pd.read_parquet(pred_path)
+
+
+# -- Sidebar -------------------------------------------------------------------
+
+def render_sidebar(df: pd.DataFrame) -> pd.Series:
+    """
+    Render the risk-ranked restaurant list in the sidebar.
+    Returns the currently selected restaurant row as a pd.Series.
+    """
+    st.sidebar.title("Closure Watch")
+    st.sidebar.caption("Tampa Bay - Restaurant Closure Risk")
+
+    search = st.sidebar.text_input("Search by name", "")
+
+    df_sorted = df.sort_values("risk_score", ascending=False).reset_index(drop=True)
+    if search.strip():
+        mask = df_sorted["name"].fillna("").str.contains(search.strip(), case=False)
+        df_sorted = df_sorted[mask].reset_index(drop=True)
+
+    if df_sorted.empty:
+        st.sidebar.warning("No restaurants match your search.")
+        st.stop()
+
+    options = [
+        f"{risk_badge(row.risk_score)} {row['name']} -- {row.risk_score:.0%}"
+        for _, row in df_sorted.iterrows()
+    ]
+
+    selected_label = st.sidebar.radio(
+        "Restaurants by Risk", options, label_visibility="collapsed"
+    )
+    selected_idx = options.index(selected_label)
+    return df_sorted.iloc[selected_idx]
+
+
+# -- App entry point -----------------------------------------------------------
+
+def main():
+    st.set_page_config(
+        page_title="ClosureWatch",
+        layout="wide",
+        page_icon="🍽",
+    )
+
+    try:
+        df = load_predictions()
+    except FileNotFoundError as e:
+        st.error(str(e))
+        st.stop()
+
+    restaurant = render_sidebar(df)
+    st.session_state["selected_id"] = restaurant["business_id"]
+
+    # Detail panel placeholder -- replaced in Task 7
+    st.markdown(f"## {restaurant.get('name', 'Unknown')}")
+    st.caption("Detail panel coming in Task 7")
+
+
+if __name__ == "__main__":
+    main()
