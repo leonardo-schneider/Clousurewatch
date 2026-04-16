@@ -36,7 +36,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from config_00 import (
     PROC_DIR, MODEL_DIR, FIG_DIR,
     TARGET_COL, RANDOM_SEED, N_FOLDS,
-    TEST_FRAC, PRIMARY_METRIC,
+    PRIMARY_METRIC,
     LGBM_EARLY_STOPPING,
 )
 
@@ -115,20 +115,26 @@ def time_split(df: pd.DataFrame, test_frac: float):
 
 def time_aware_cv_folds(df: pd.DataFrame, n_folds: int):
     """
-    Expanding-window CV: each fold adds more data to training.
-    Fold k trains on rows 0..k*(n/K) and validates on the next chunk.
+    Walk-forward CV: train on first k/N of data, validate on next chunk.
+    Ensures each validation fold has a minimum number of positives.
     """
     df_sorted = df.sort_values("anchor_date").reset_index(drop=True)
     n = len(df_sorted)
-    fold_size = n // n_folds
+    fold_size = n // (n_folds + 1)
     folds = []
     for k in range(1, n_folds + 1):
         train_end = k * fold_size
-        val_end   = min((k + 1) * fold_size, n)
-        if val_end <= train_end:
+        val_start = train_end
+        val_end   = min(val_start + fold_size, n)
+        if val_end <= val_start:
             break
-        train_idx = df_sorted.index[:train_end].tolist()
-        val_idx   = df_sorted.index[train_end:val_end].tolist()
+        train_idx = list(range(0, train_end))
+        val_idx   = list(range(val_start, val_end))
+        # Skip fold if fewer than 5 positives in validation
+        val_labels = df_sorted.iloc[val_idx][TARGET_COL]
+        if val_labels.sum() < 5:
+            print(f"  Skipping fold {k}: only {val_labels.sum()} positives in val")
+            continue
         folds.append((train_idx, val_idx))
     return folds
 
@@ -266,7 +272,13 @@ def main():
 
     # ── Time-aware train/test split ────────────────────────────────────────
     print("\n[1] Train/Test Split")
-    train_val_df, test_df = time_split(feat, TEST_FRAC)
+    TEST_CUTOFF = pd.Timestamp("2020-06-01")
+    feat["anchor_date"] = pd.to_datetime(feat["anchor_date"])
+    train_val_df = feat[feat["anchor_date"] < TEST_CUTOFF].copy()
+    test_df      = feat[feat["anchor_date"] >= TEST_CUTOFF].copy()
+    print(f"  Train/Val: {len(train_val_df):,}  |  Test: {len(test_df):,}")
+    print(f"  Train closed: {train_val_df[TARGET_COL].sum()} ({train_val_df[TARGET_COL].mean():.1%})")
+    print(f"  Test  closed: {test_df[TARGET_COL].sum()} ({test_df[TARGET_COL].mean():.1%})")
     train_val_idx = train_val_df.index
     test_idx      = test_df.index
 
