@@ -10,3 +10,7 @@ tqdm
 joblib
 python-dateutil
 pyarrow
+xgboost
+streamlit
+plotly
+pytest
