@@ -14,8 +14,8 @@ import sys
 from pathlib import Path
 
 import pandas as pd
-import numpy as np
-import plotly.graph_objects as go
+import numpy as np              # used in render_detail (Task 7)
+import plotly.graph_objects as go  # used in render_detail (Task 7)
 import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).parent))
