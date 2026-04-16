@@ -133,19 +133,22 @@ Timeline per restaurant:
 
 ---
 
-## Confirmed Results (as of latest run)
+## Confirmed Results — Full Algorithm Shootout
 
 | Model | CV AUC-PR | Test AUC-PR | Test AUC-ROC | Test F1 |
 |---|---|---|---|---|
-| Logistic Regression (benchmark) | 0.106 ± 0.035 | 0.1575 | 0.6456 | 0.2553 |
-| LightGBM (main model) | 0.134 ± 0.052 | 0.1945 | 0.6901 | 0.2805 |
+| **XGBoost** (winner) | 0.124 ± 0.039 | **0.2069** | **0.7002** | 0.2448 |
+| Random Forest | 0.112 ± 0.054 | 0.1994 | 0.6948 | 0.1347 |
+| LightGBM | 0.091 ± 0.021 | 0.1977 | 0.6699 | 0.2093 |
+| MLP Neural Network | 0.083 ± 0.010 | 0.1592 | 0.6187 | 0.1622 |
+| Logistic Regression (benchmark) | 0.106 ± 0.035 | 0.1574 | 0.6458 | 0.2553 |
 
-- Base rate (random classifier AUC-PR): 0.063
-- LightGBM is 3x better than random on AUC-PR
-- LightGBM +23.5% AUC-PR improvement over Logistic Regression
+- Base rate (random AUC-PR): 0.063
+- XGBoost is 3.3x better than random on AUC-PR
+- XGBoost +31.4% AUC-PR improvement over Logistic Regression benchmark
+- MLP note: lowest CV variance (±0.010) — most stable but peaks lower
 - Dataset: 5,143 restaurants, 326 closures (6.3%), Tampa Bay metro
-- Test set: 1,244 businesses anchored 2020-06-01 onward, 129 closures (10.4%)
-- Train cutoff: anchor_date < 2020-06-01
+- Test set: 1,244 businesses, 129 closures (10.4%), anchored 2020-06 onward
 
 ## Key Predictive Features (from LightGBM importance)
 
