@@ -111,22 +111,23 @@ def render_sidebar(df: pd.DataFrame) -> pd.Series:
 
     df_sorted = df.sort_values("risk_score", ascending=False).reset_index(drop=True)
     if search.strip():
-        mask = df_sorted["name"].fillna("").str.contains(search.strip(), case=False)
+        mask = df_sorted["name"].fillna("").str.contains(search.strip(), case=False, regex=False)
         df_sorted = df_sorted[mask].reset_index(drop=True)
 
     if df_sorted.empty:
         st.sidebar.warning("No restaurants match your search.")
         st.stop()
 
-    options = [
-        f"{risk_badge(row.risk_score)} {row['name']} -- {row.risk_score:.0%}"
-        for _, row in df_sorted.iterrows()
-    ]
-
-    selected_label = st.sidebar.radio(
-        "Restaurants by Risk", options, label_visibility="collapsed"
+    selected_idx = st.sidebar.radio(
+        "Restaurants by Risk",
+        range(len(df_sorted)),
+        format_func=lambda i: (
+            f"{risk_badge(df_sorted.iloc[i]['risk_score'])} "
+            f"{df_sorted.iloc[i]['name']} -- "
+            f"{df_sorted.iloc[i]['risk_score']:.0%}"
+        ),
+        label_visibility="collapsed",
     )
-    selected_idx = options.index(selected_label)
     return df_sorted.iloc[selected_idx]
 
 
