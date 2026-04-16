@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 app.py
 ------
@@ -14,8 +15,7 @@ import sys
 from pathlib import Path
 
 import pandas as pd
-import numpy as np              # used in render_detail (Task 7)
-import plotly.graph_objects as go  # used in render_detail (Task 7)
+import plotly.graph_objects as go
 import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -179,7 +179,6 @@ def render_detail(restaurant: pd.Series, df: pd.DataFrame) -> None:
 
         if col in ("review_drought_flag", "checkin_drought_flag"):
             triggered = bool(val)
-            icon = "warning" if (triggered and is_risk) else "check"
             state = "Yes" if triggered else "No"
             if triggered and is_risk:
                 st.warning(f"**{name}**: {state}")
