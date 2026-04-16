@@ -108,8 +108,9 @@ def build_label(biz_row, reviews_biz, anchor):
 
     last_review_ever = reviews_biz['date'].max()
 
-    # Was open → label 0 (requires reviews at least 1 month past outcome_end)
-    if last_review_ever > outcome_end + relativedelta(months=1):
+    # If business has reviews well after outcome window → was open → label 0
+    # "Well after" = at least 3 months past outcome_end (confirms ongoing activity)
+    if last_review_ever > outcome_end + relativedelta(months=3):
         return 0
 
     # If last review is before or within outcome_end → activity stopped → label 1
