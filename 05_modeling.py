@@ -20,6 +20,7 @@ import matplotlib.pyplot as plt
 
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.neural_network import MLPClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
 from sklearn.metrics import (
@@ -72,6 +73,18 @@ MODELS = {
         colsample_bytree=0.8, scale_pos_weight=15,
         eval_metric="aucpr", early_stopping_rounds=50,
         random_state=RANDOM_SEED, verbosity=0),
+    "MLP": Pipeline([
+        ("scaler", StandardScaler()),
+        ("clf", MLPClassifier(
+            hidden_layer_sizes=(64, 32),
+            activation="relu",
+            learning_rate_init=0.001,
+            max_iter=500,
+            early_stopping=True,
+            validation_fraction=0.1,
+            n_iter_no_change=20,
+            random_state=RANDOM_SEED))
+    ]),
     "LightGBM": lgb.LGBMClassifier(
         n_estimators=1000, learning_rate=0.05,
         num_leaves=31, min_child_samples=20,
@@ -197,6 +210,11 @@ def fit_model(name, model, X_tr, y_tr, X_va, y_va):
                   eval_set=[(X_va, y_va)],
                   callbacks=[lgb.early_stopping(50, verbose=False),
                              lgb.log_evaluation(period=-1)])
+    elif name == "MLP":
+        from imblearn.over_sampling import RandomOverSampler
+        ros = RandomOverSampler(random_state=RANDOM_SEED)
+        X_res, y_res = ros.fit_resample(X_tr, y_tr)
+        model.fit(X_res, y_res)
     else:
         model.fit(X_tr, y_tr)
     return model
