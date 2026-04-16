@@ -41,7 +41,7 @@ OUTCOME_MONTHS = 6
 
 # Latest anchor we allow (leave room for outcome window in the dataset)
 # Yelp academic dataset typically runs through ~2022; adjust as needed.
-LATEST_ANCHOR  = "2021-06-01"   # anchor + 6 months must be < dataset end
+LATEST_ANCHOR  = "2020-06-01"   # leave outcome + post-outcome observation room
 EARLIEST_ANCHOR = "2016-01-01"  # need 12 months of history before anchor
 
 # ── Modeling ───────────────────────────────────────────────────────────────
