@@ -212,7 +212,7 @@ def main():
     )
 
     # ── Strategy 3: Stacking (only if neither beat baseline) ──────────────
-    if best_auc <= BASELINE_AUC_PR:
+    if best_auc < BASELINE_AUC_PR:
         print("\n[3] Stacking (meta-LogisticRegression)")
         print("  Neither strategy beat baseline — escalating...")
         st_prob    = stacking_ensemble(models, X_train, y_train, X_test)
