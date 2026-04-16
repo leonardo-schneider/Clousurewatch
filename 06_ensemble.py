@@ -88,20 +88,25 @@ def compute_metrics(y_true, y_prob, threshold: float = 0.5) -> dict:
 # ── Data / model loading ───────────────────────────────────────────────────────
 
 def load_models(model_dir: Path) -> dict:
-    """Load all 5 saved .pkl model files. Raises if any are missing."""
+    """Load saved .pkl model files; skips any that fail to load (e.g. numpy version mismatch)."""
     models = {}
     missing = []
     for name in MODEL_NAMES:
         path = model_dir / f"{name}.pkl"
-        if path.exists():
-            models[name] = joblib.load(path)
-        else:
+        if not path.exists():
             missing.append(str(path))
+            continue
+        try:
+            models[name] = joblib.load(path)
+        except Exception as e:
+            print(f"  WARNING: Could not load {name}.pkl ({e.__class__.__name__}: {e}) - skipping.")
     if missing:
         raise FileNotFoundError(
             f"Missing model files (run 05_modeling.py first):\n" +
             "\n".join(missing)
         )
+    if not models:
+        raise RuntimeError("No models could be loaded. Re-run 05_modeling.py.")
     return models
 
 
@@ -133,13 +138,14 @@ def stacking_ensemble(
     X_meta_val = X_train.iloc[split:]
     y_meta_val = y_train.iloc[split:]
 
+    available = [name for name in MODEL_NAMES if name in models]
     meta_val_features = np.column_stack([
         models[name].predict_proba(X_meta_val)[:, 1]
-        for name in MODEL_NAMES
+        for name in available
     ])
     meta_test_features = np.column_stack([
         models[name].predict_proba(X_test)[:, 1]
-        for name in MODEL_NAMES
+        for name in available
     ])
 
     meta_lr = LogisticRegression(
@@ -153,7 +159,7 @@ def stacking_ensemble(
 
 def main():
     print("=" * 60)
-    print("STEP 6 — Ensemble Strategy Ladder")
+    print("STEP 6 - Ensemble Strategy Ladder")
     print("=" * 60)
 
     # ── Load feature matrix ────────────────────────────────────────────────
@@ -214,7 +220,7 @@ def main():
     # ── Strategy 3: Stacking (only if neither beat baseline) ──────────────
     if best_auc < BASELINE_AUC_PR:
         print("\n[3] Stacking (meta-LogisticRegression)")
-        print("  Neither strategy beat baseline — escalating...")
+        print("  Neither strategy beat baseline - escalating...")
         st_prob    = stacking_ensemble(models, X_train, y_train, X_test)
         st_metrics = compute_metrics(y_test, st_prob)
         print(f"  AUC-PR={st_metrics['AUC_PR']:.4f}  "
@@ -223,13 +229,13 @@ def main():
         if st_metrics["AUC_PR"] > best_auc:
             best_prob, best_name, best_auc = st_prob, "stacking", st_metrics["AUC_PR"]
     else:
-        print("\n[3] Stacking — skipped (not needed)")
+        print("\n[3] Stacking - skipped (not needed)")
 
     # ── Summary ────────────────────────────────────────────────────────────
     improvement = (best_auc - BASELINE_AUC_PR) / BASELINE_AUC_PR
-    print(f"\n  ✓ Winner:   {best_name}")
-    print(f"  ✓ AUC-PR:  {best_auc:.4f}  (baseline: {BASELINE_AUC_PR:.4f})")
-    print(f"  ✓ Change:  {improvement:+.1%} vs XGBoost")
+    print(f"\n  Winner:   {best_name}")
+    print(f"  AUC-PR:  {best_auc:.4f}  (baseline: {BASELINE_AUC_PR:.4f})")
+    print(f"  Change:  {improvement:+.1%} vs XGBoost")
 
     results["winner"] = best_name
     results["winner_auc_pr"] = best_auc
@@ -237,7 +243,7 @@ def main():
     # ── Save outputs ───────────────────────────────────────────────────────
     with open(MODEL_DIR / "ensemble_results.json", "w") as f:
         json.dump(results, f, indent=2)
-    print(f"\n  Saved → {MODEL_DIR}/ensemble_results.json")
+    print(f"\n  Saved: {MODEL_DIR}/ensemble_results.json")
 
     # Build predictions parquet (test set only — these are the UI records)
     sig_cols_present = [c for c in SIGNAL_COLS if c in test_df.columns]
@@ -247,7 +253,7 @@ def main():
     pred_df["risk_score"] = best_prob
     pred_df = pred_df.merge(biz, on="business_id", how="left")
     pred_df.to_parquet(PROC_DIR / "ensemble_predictions.parquet", index=False)
-    print(f"  Saved → {PROC_DIR}/ensemble_predictions.parquet")
+    print(f"  Saved: {PROC_DIR}/ensemble_predictions.parquet")
     print(f"  Records: {len(pred_df):,}  |  "
           f"Closed: {pred_df[TARGET_COL].sum()} ({pred_df[TARGET_COL].mean():.1%})")
 
