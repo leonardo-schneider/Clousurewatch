@@ -72,10 +72,11 @@ def simple_average(probs: dict) -> np.ndarray:
 def weighted_average(probs: dict, weights: dict) -> np.ndarray:
     """Weighted average of predicted probabilities. Weights need not sum to 1."""
     total = sum(weights[k] for k in probs)
-    return sum(weights[k] * probs[k] for k in probs) / total
+    return np.sum([weights[k] * probs[k] for k in probs], axis=0) / total
 
 
 def compute_metrics(y_true, y_prob, threshold: float = 0.5) -> dict:
+    """Return AUC-PR, AUC-ROC, and F1 for given true labels and predicted probabilities."""
     y_pred = (y_prob >= threshold).astype(int)
     return {
         "AUC_PR":  float(average_precision_score(y_true, y_prob)),
