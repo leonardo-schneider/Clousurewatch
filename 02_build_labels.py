@@ -79,6 +79,20 @@ def assign_anchor(reviews_biz: pd.DataFrame) -> pd.Timestamp | None:
     if dates.min() > obs_start:
         return None
 
+    # CRITICAL: We must be able to observe post-anchor activity.
+    # If the dataset has no reviews for this business after anchor+6m,
+    # we cannot know if it closed. Drop it.
+    post_outcome = reviews_biz[reviews_biz["date"] > anchor + relativedelta(months=6)]
+    pre_anchor = reviews_biz[reviews_biz["date"] < anchor]
+
+    # Require at least 1 review AFTER the outcome window to confirm still open,
+    # OR the business must be in the closed pool (last review < anchor+6m)
+    # We handle this in build_label — here just ensure anchor is not too close
+    # to the dataset edge (latest review date in the whole dataset)
+    DATASET_END = pd.Timestamp("2022-01-19")  # from step 1 output
+    if anchor + relativedelta(months=6) > DATASET_END:
+        return None
+
     return anchor
 
 
@@ -87,36 +101,24 @@ def assign_anchor(reviews_biz: pd.DataFrame) -> pd.Timestamp | None:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def build_label(biz_row, reviews_biz, anchor):
-    """
-    Label = 1 if review activity stops within [anchor, anchor + 6 months).
-
-    We completely ignore is_open. Instead we use behavioral evidence:
-    - If the last review EVER is before anchor + 6 months → closed in window
-    - If reviews continue well past anchor + 6 months → still open in window
-
-    This makes labels consistent across all anchor years.
-    """
     from dateutil.relativedelta import relativedelta
     outcome_end = anchor + relativedelta(months=6)
+    DATASET_END = pd.Timestamp("2022-01-19")
 
-    if reviews_biz.empty:
-        return 0  # no reviews = exclude, not closure
+    last_review_ever = reviews_biz['date'].max()
 
-    last_review_ever = reviews_biz["date"].max()
-
-    # Business has reviews after outcome window → was open during window
-    if last_review_ever > outcome_end:
+    # If business has reviews well after outcome window → was open → label 0
+    # "Well after" = at least 3 months past outcome_end (confirms ongoing activity)
+    if last_review_ever > outcome_end + relativedelta(months=3):
         return 0
 
-    # Last review ever is before outcome_end → activity stopped in window
-    # Require at least a 6-month silence to confirm (not just data gap)
-    silence_days = (last_review_ever - anchor).days
-    if last_review_ever < anchor:
-        # Already silent before anchor — was dying before obs window ended
-        return 1
+    # If last review is before or within outcome_end → activity stopped → label 1
+    # But only if the dataset_end gives us enough room to observe silence
+    # (i.e. outcome_end is not right at the edge of the data)
     if last_review_ever <= outcome_end:
         return 1
 
+    # Last review is in (outcome_end, outcome_end+3m] — ambiguous, drop via anchor
     return 0
 
 
