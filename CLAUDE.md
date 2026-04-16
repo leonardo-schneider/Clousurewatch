@@ -133,18 +133,28 @@ Timeline per restaurant:
 
 ---
 
-## Models
+## Confirmed Results (as of latest run)
 
-| Script | Model | Role |
-|---|---|---|
-| `05_modeling.py` | Logistic Regression | **Benchmark** (required by assignment) |
-| `05_modeling.py` | LightGBM | **Main model** |
-| Future | Stacked ensemble (LGB + LR + DistilBERT) | Optional extension |
+| Model | CV AUC-PR | Test AUC-PR | Test AUC-ROC | Test F1 |
+|---|---|---|---|---|
+| Logistic Regression (benchmark) | 0.106 ± 0.035 | 0.1575 | 0.6456 | 0.2553 |
+| LightGBM (main model) | 0.134 ± 0.052 | 0.1945 | 0.6901 | 0.2805 |
 
-**Primary metric:** AUC-PR (appropriate for class imbalance ~15-20% closed).
-**Secondary metrics:** AUC-ROC, F1, Precision, Recall.
+- Base rate (random classifier AUC-PR): 0.063
+- LightGBM is 3x better than random on AUC-PR
+- LightGBM +23.5% AUC-PR improvement over Logistic Regression
+- Dataset: 5,143 restaurants, 326 closures (6.3%), Tampa Bay metro
+- Test set: 1,244 businesses anchored 2020-06-01 onward, 129 closures (10.4%)
+- Train cutoff: anchor_date < 2020-06-01
 
-Results are saved to `models/results_summary.json` after `05_modeling.py` runs.
+## Key Predictive Features (from LightGBM importance)
+
+Top signals in order:
+1. months_with_zero_reviews  (corr=0.56 with label)
+2. days_since_last_review    (corr=0.56)
+3. review_drought_flag       (corr=0.43)
+4. checkin_drought_flag      (corr=0.34)
+5. pct_5star                 (corr=0.29)
 
 ---
 
