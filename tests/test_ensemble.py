@@ -1,6 +1,5 @@
 """Unit tests for 06_ensemble.py core math functions."""
 import importlib.util
-import sys
 from pathlib import Path
 
 import numpy as np
