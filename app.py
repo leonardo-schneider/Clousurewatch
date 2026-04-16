@@ -131,6 +131,120 @@ def render_sidebar(df: pd.DataFrame) -> pd.Series:
     return df_sorted.iloc[selected_idx]
 
 
+# -- Detail panel --------------------------------------------------------------
+
+def render_detail(restaurant: pd.Series, df: pd.DataFrame) -> None:
+    """Render the right-side detail panel for the selected restaurant."""
+    color = risk_color(restaurant["risk_score"])
+    label = risk_label(restaurant["risk_score"])
+
+    # -- Header row ------------------------------------------------------------
+    col_name, col_gauge = st.columns([3, 1])
+
+    with col_name:
+        st.markdown(f"## {restaurant.get('name', 'Unknown')}")
+        stars = restaurant.get("stars", None)
+        city  = restaurant.get("city", "")
+        star_str = f"Yelp {stars} stars" if pd.notna(stars) else "Yelp rating N/A"
+        st.caption(f"{city} - {star_str}")
+
+    with col_gauge:
+        st.markdown(
+            f"""
+            <div style='text-align:center;background:#16213e;border-radius:8px;
+                        padding:14px;margin-top:4px'>
+              <div style='font-size:38px;font-weight:bold;color:{color}'>
+                {restaurant['risk_score']:.0%}
+              </div>
+              <div style='color:#aaa;font-size:11px'>closure risk</div>
+              <div style='color:{color};font-size:12px;font-weight:bold'>{label}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    st.divider()
+
+    # -- Key signals -----------------------------------------------------------
+    st.subheader("Key Signals")
+    present_cols = [
+        c for c in SIGNAL_COLS
+        if c in restaurant.index and pd.notna(restaurant[c])
+    ]
+
+    for col in present_cols:
+        val     = restaurant[col]
+        is_risk = SIGNAL_RISK_DIR[col]
+        name    = SIGNAL_LABELS[col]
+
+        if col in ("review_drought_flag", "checkin_drought_flag"):
+            triggered = bool(val)
+            icon = "warning" if (triggered and is_risk) else "check"
+            state = "Yes" if triggered else "No"
+            if triggered and is_risk:
+                st.warning(f"**{name}**: {state}")
+            else:
+                st.success(f"**{name}**: {state}")
+        elif col == "days_since_last_review":
+            if is_risk:
+                st.warning(f"**{name}**: {val:.0f} days")
+            else:
+                st.success(f"**{name}**: {val:.0f} days")
+        elif col == "pct_5star":
+            if val > 0.5:
+                st.success(f"**{name}**: {val:.0%}")
+            else:
+                st.warning(f"**{name}**: {val:.0%}")
+        else:
+            if is_risk:
+                st.warning(f"**{name}**: {val:.1f}")
+            else:
+                st.success(f"**{name}**: {val:.1f}")
+
+    st.divider()
+
+    # -- Feature bar chart (percentile-normalized) -----------------------------
+    st.subheader("Feature Contributions")
+    st.caption(
+        "Bar length = restaurant percentile in this dataset "
+        "(0% = lowest, 100% = highest for risk-increasing features)"
+    )
+
+    chart_data = {}
+    chart_colors = []
+
+    for col in present_cols:
+        pct = percentile_rank(df[col], restaurant[col])
+        # For risk-decreasing features (pct_5star), invert so bar = risk contribution
+        display_pct = pct if SIGNAL_RISK_DIR[col] else (1.0 - pct)
+        chart_data[SIGNAL_LABELS[col]] = display_pct
+        chart_colors.append(risk_color(1.0) if SIGNAL_RISK_DIR[col] else "#4caf50")
+
+    fig = go.Figure(go.Bar(
+        x=list(chart_data.values()),
+        y=list(chart_data.keys()),
+        orientation="h",
+        marker_color=chart_colors,
+        text=[f"{v:.0%}" for v in chart_data.values()],
+        textposition="outside",
+    ))
+    fig.update_layout(
+        paper_bgcolor="#1a1a2e",
+        plot_bgcolor="#16213e",
+        font=dict(color="#eeeeee", size=12),
+        margin=dict(l=0, r=60, t=10, b=0),
+        height=220,
+        xaxis=dict(
+            range=[0, 1.15],
+            tickformat=".0%",
+            gridcolor="#0f3460",
+            showgrid=True,
+        ),
+        yaxis=dict(gridcolor="#0f3460"),
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+
 # -- App entry point -----------------------------------------------------------
 
 def main():
@@ -149,9 +263,7 @@ def main():
     restaurant = render_sidebar(df)
     st.session_state["selected_id"] = restaurant["business_id"]
 
-    # Detail panel placeholder -- replaced in Task 7
-    st.markdown(f"## {restaurant.get('name', 'Unknown')}")
-    st.caption("Detail panel coming in Task 7")
+    render_detail(restaurant, df)
 
 
 if __name__ == "__main__":
