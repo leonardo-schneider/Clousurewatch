@@ -1,4 +1,4 @@
-"""Unit tests for app.py helper functions."""
+"""Unit tests for app_helpers.py."""
 import importlib.util
 from pathlib import Path
 import pandas as pd
@@ -10,10 +10,11 @@ _spec = importlib.util.spec_from_file_location(
 _mod  = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_mod)
 
-risk_color      = _mod.risk_color
-risk_label      = _mod.risk_label
-risk_badge      = _mod.risk_badge
-percentile_rank = _mod.percentile_rank
+risk_color         = _mod.risk_color
+risk_label         = _mod.risk_label
+risk_badge         = _mod.risk_badge
+percentile_rank    = _mod.percentile_rank
+outcome_banner_html = _mod.outcome_banner_html
 
 
 class TestRiskColor:
@@ -67,3 +68,25 @@ class TestPercentileRank:
     def test_min_value(self):
         series = pd.Series([1.0, 2.0, 3.0])
         assert percentile_rank(series, 1.0) == pytest.approx(1 / 3)
+
+
+class TestOutcomeBannerHtml:
+    def test_missing_column_returns_empty(self):
+        row = pd.Series({"name": "test"})
+        assert outcome_banner_html(row) == ""
+
+    def test_closed_contains_permanently_closed(self):
+        row = pd.Series({"closed_within_6m": 1, "anchor_date": pd.Timestamp("2020-06-01")})
+        assert "PERMANENTLY CLOSED" in outcome_banner_html(row)
+
+    def test_open_contains_still_open(self):
+        row = pd.Series({"closed_within_6m": 0, "anchor_date": pd.Timestamp("2020-06-01")})
+        assert "STILL OPEN" in outcome_banner_html(row)
+
+    def test_nat_anchor_omits_anchor_label(self):
+        row = pd.Series({"closed_within_6m": 1, "anchor_date": pd.NaT})
+        assert "Anchor:" not in outcome_banner_html(row)
+
+    def test_anchor_date_formatted_in_output(self):
+        row = pd.Series({"closed_within_6m": 0, "anchor_date": pd.Timestamp("2020-06-01")})
+        assert "Jun 2020" in outcome_banner_html(row)
