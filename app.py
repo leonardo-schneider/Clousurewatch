@@ -6,6 +6,7 @@ bold condensed type, album-art energy applied to risk data.
 
 from __future__ import annotations
 
+import os as _os
 from pathlib import Path
 
 import numpy as np
@@ -371,7 +372,6 @@ def load_data() -> pd.DataFrame:
 
 df = load_data()
 
-import os as _os
 _parquet_path = Path("data/processed/ensemble_predictions.parquet")
 _batch_date = (
     pd.Timestamp(_os.path.getmtime(_parquet_path), unit="s").strftime("%b %Y")
@@ -681,7 +681,7 @@ with col_risk:
                 Risk Percentile
             </div>
             <div style="font-size:20px;font-weight:800;color:{dot_color}">
-                Top {100 - int(percentile_rank(df["risk_pct"], selected["risk_pct"]) * 100)}%
+                Top {max(1, 100 - int(percentile_rank(df["risk_pct"], selected["risk_pct"]) * 100))}%
             </div>
             <div style="font-size:10px;color:var(--sp-text-hint);margin-top:2px">
                 riskiest in Tampa Bay
