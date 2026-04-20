@@ -669,8 +669,10 @@ if sel_idx not in df.index:
 selected = df.loc[sel_idx]
 tier_name, tier_css, dot_color = risk_tier(selected["risk_pct"])
 
+_banner_html = outcome_banner_html(selected)
 st.markdown(f"""
 <div class="cw-header">
+    {_banner_html}
     <div class="cw-brand">📡 ClosureWatch</div>
     <div class="cw-title">{selected['name']}</div>
     <div class="cw-sub">
@@ -851,62 +853,29 @@ st.markdown("---")
 st.markdown('<div class="section-label">🔴 Highest Risk — Watch List</div>', unsafe_allow_html=True)
 
 top20 = df.head(20).copy()
-top20["Rank"] = range(1, len(top20) + 1)
-top20["Risk"] = top20["risk_pct"].apply(lambda x: f"{x:.1f}%")
-top20["Tier"] = top20["risk_pct"].apply(lambda x: risk_tier(x)[0])
-top20["Stars �?"] = top20.get("stars", pd.Series(["-"] * len(top20))).apply(
-    lambda x: f"{x:.1f}" if isinstance(x, (int, float)) else str(x)
+top20_display = pd.DataFrame({
+    "Restaurant": top20["name"].values,
+    "Risk %":     top20["risk_pct"].apply(lambda x: f"{x:.1f}%").values,
+    "Tier":       top20["risk_pct"].apply(lambda x: risk_tier(x)[0]).values,
+    "Stars ⭐":   top20.get("stars", pd.Series(["-"] * len(top20))).apply(
+                      lambda x: f"{x:.1f}" if isinstance(x, (int, float)) else str(x)
+                  ).values,
+})
+
+event = st.dataframe(
+    top20_display,
+    use_container_width=True,
+    on_select="rerun",
+    selection_mode="single-row",
+    hide_index=True,
 )
 
-header_vals = ["#", "Restaurant", "Closure Risk", "Tier", "Yelp Stars"]
-cell_vals = [
-    top20["Rank"].tolist(),
-    top20["name"].tolist(),
-    top20["Risk"].tolist(),
-    top20["Tier"].tolist(),
-    top20["Stars �?"].tolist() if "Stars �?" in top20.columns else ["—"] * len(top20),
-]
-tier_colors = top20["risk_pct"].apply(lambda x: risk_tier(x)[1]).tolist()
-font_colors_tier = [
-    "#E24B4A" if t == "risk-high" else "#EF9F27" if t == "risk-med" else "#1DB954"
-    for t in tier_colors
-]
-selected_top = [
-    "rgba(29,185,84,0.08)" if i == st.session_state.selected_idx else "#181818"
-    for i in top20.index
-]
-
-fig_table = go.Figure(go.Table(
-    columnwidth=[40, 200, 100, 120, 90],
-    header=dict(
-        values=[f"<b>{v}</b>" for v in header_vals],
-        fill_color="#282828",
-        font=dict(family="Montserrat", color="#B3B3B3", size=11),
-        line_color="#3e3e3e",
-        align=["center", "left", "center", "center", "center"],
-        height=36,
-    ),
-    cells=dict(
-        values=cell_vals,
-        fill_color=[selected_top] * len(cell_vals),
-        font=dict(family="Montserrat", color=[
-            ["#B3B3B3"] * len(top20),
-            ["#FFFFFF"] * len(top20),
-            ["#FFFFFF"] * len(top20),
-            font_colors_tier,
-            ["#B3B3B3"] * len(top20),
-        ], size=12),
-        line_color="#282828",
-        align=["center", "left", "center", "center", "center"],
-        height=34,
-    ),
-))
-fig_table.update_layout(
-    paper_bgcolor="rgba(0,0,0,0)",
-    margin=dict(l=0, r=0, t=0, b=0),
-    height=36 + 34 * min(20, len(top20)) + 8,
-)
-st.plotly_chart(fig_table, use_container_width=True, config={"displayModeBar": False})
+if event.selection.rows:
+    clicked_local = event.selection.rows[0]
+    new_idx = int(top20.index[clicked_local])
+    if new_idx != st.session_state.selected_idx:
+        st.session_state.selected_idx = new_idx
+        st.rerun()
 
 st.markdown(f"""
 <div style="margin-top:2rem;padding-top:1rem;border-top:1px solid #282828;
