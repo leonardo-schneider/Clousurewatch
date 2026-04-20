@@ -4,13 +4,15 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-_spec = importlib.util.spec_from_file_location("app", Path(__file__).parent.parent / "app.py")
+_spec = importlib.util.spec_from_file_location(
+    "app_helpers", Path(__file__).parent.parent / "app_helpers.py"
+)
 _mod  = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_mod)
 
-risk_color    = _mod.risk_color
-risk_label    = _mod.risk_label
-risk_badge    = _mod.risk_badge
+risk_color      = _mod.risk_color
+risk_label      = _mod.risk_label
+risk_badge      = _mod.risk_badge
 percentile_rank = _mod.percentile_rank
 
 
