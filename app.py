@@ -19,6 +19,7 @@ from app_helpers import (
     risk_badge,
     percentile_rank,
     outcome_banner_html,
+    compute_shap_row,
 )
 
 # Page config must be first Streamlit command.
@@ -370,7 +371,26 @@ def load_data() -> pd.DataFrame:
     return df.sort_values("risk_pct", ascending=False).reset_index(drop=True)
 
 
+@st.cache_resource
+def load_xgb_model():
+    import joblib
+    path = Path("models/xgboost.pkl")
+    if path.exists():
+        return joblib.load(path)
+    return None
+
+
+@st.cache_data
+def load_feature_matrix() -> pd.DataFrame | None:
+    path = Path("data/processed/features.parquet")
+    if path.exists():
+        return pd.read_parquet(path)
+    return None
+
+
 df = load_data()
+_xgb_model = load_xgb_model()
+_feat_matrix = load_feature_matrix()
 
 _parquet_path = Path("data/processed/ensemble_predictions.parquet")
 _batch_date = (
@@ -740,25 +760,27 @@ st.markdown("<br>", unsafe_allow_html=True)
 chart_col, dist_col = st.columns([1.6, 1], gap="large")
 
 with chart_col:
-    st.markdown('<div class="section-label">Feature Contributions</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-label">Feature Contributions (SHAP)</div>', unsafe_allow_html=True)
 
-    feat_cols = [c for c in df.columns if c.startswith("feat_")]
-    if feat_cols:
-        vals = [float(selected.get(c, 0)) for c in feat_cols]
-        labels = [
-            FEAT_LABELS.get(c.replace("feat_", ""), c.replace("feat_", "").replace("_", " ").title())
-            for c in feat_cols
+    _business_id = selected.get("business_id", None)
+    shap_vals, feat_cols = None, None
+    if _business_id and _xgb_model is not None and _feat_matrix is not None:
+        shap_vals, feat_cols = compute_shap_row(_xgb_model, _feat_matrix, str(_business_id))
+
+    if shap_vals is not None:
+        pairs = sorted(zip(shap_vals, feat_cols), key=lambda x: abs(x[0]), reverse=True)
+        vals_s   = [p[0] for p in pairs]
+        labels_s = [
+            FEAT_LABELS.get(p[1], p[1].replace("_", " ").title())
+            for p in pairs
         ]
-        colors = ["#E24B4A" if v > 0 else "#1DB954" for v in vals]
-
-        sorted_pairs = sorted(zip(vals, labels, colors), key=lambda x: abs(x[0]), reverse=True)
-        vals_s, labels_s, colors_s = zip(*sorted_pairs) if sorted_pairs else ([], [], [])
+        colors_s = ["#E24B4A" if v > 0 else "#1DB954" for v in vals_s]
 
         fig_feat = go.Figure(go.Bar(
-            x=list(vals_s),
-            y=list(labels_s),
+            x=vals_s,
+            y=labels_s,
             orientation="h",
-            marker_color=list(colors_s),
+            marker_color=colors_s,
             marker_line_width=0,
         ))
         fig_feat.update_layout(
@@ -770,8 +792,10 @@ with chart_col:
             xaxis=dict(
                 zeroline=True, zerolinecolor="#3e3e3e", zerolinewidth=1,
                 gridcolor="#282828", tickfont=dict(size=11, color="#535353"),
-                title=dict(text="�? lowers risk  ·  raises risk →", font=dict(size=10, color="#535353")),
-                range=[-1.1, 1.1],
+                title=dict(
+                    text="← lowers risk  ·  raises risk →",
+                    font=dict(size=10, color="#535353"),
+                ),
             ),
             yaxis=dict(gridcolor="rgba(0,0,0,0)", tickfont=dict(size=11, color="#B3B3B3")),
             bargap=0.3,
@@ -779,7 +803,8 @@ with chart_col:
         st.plotly_chart(fig_feat, use_container_width=True, config={"displayModeBar": False})
     else:
         st.markdown(
-            '<div style="color:#535353;font-size:13px;padding:2rem">No feature contribution data available.</div>',
+            '<div style="color:#535353;font-size:13px;padding:2rem">'
+            "SHAP model not available — run 05_modeling.py first, or select a restaurant with matching data.</div>",
             unsafe_allow_html=True,
         )
 

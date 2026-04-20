@@ -66,3 +66,42 @@ def outcome_banner_html(row: pd.Series) -> str:
         f'<span style="color:#666;font-size:10px">{anchor_str}</span>'
         "</div>"
     )
+
+
+def compute_shap_row(model, feature_matrix: "pd.DataFrame", business_id: str):
+    """
+    Compute SHAP values for one restaurant. Returns (shap_values_list, feature_names_list)
+    or (None, None) if the model or row is unavailable.
+    """
+    import shap
+    import numpy as np
+
+    if model is None or feature_matrix is None:
+        return None, None
+
+    _META = {"business_id", "closed_within_6m", "anchor_date", "city", "state"}
+    feat_cols = [c for c in feature_matrix.columns if c not in _META]
+
+    row = feature_matrix[feature_matrix["business_id"] == business_id]
+    if row.empty:
+        return None, None
+
+    feature_matrix = feature_matrix.copy()
+    feature_matrix["anchor_date"] = pd.to_datetime(feature_matrix["anchor_date"])
+
+    TEST_CUTOFF = "2020-06-01"
+    train_rows = feature_matrix[feature_matrix["anchor_date"] < TEST_CUTOFF]
+    train_medians = train_rows[feat_cols].median()
+    X = row[feat_cols].fillna(train_medians)
+
+    explainer = shap.TreeExplainer(model)
+    sv = explainer.shap_values(X)
+    # sv may be 1D array, 2D array, or list-of-arrays depending on XGBoost version
+    if isinstance(sv, list):
+        # list of arrays (one per class) — take positive class
+        arr = np.array(sv[-1])
+    else:
+        arr = np.array(sv)
+    if arr.ndim == 2:
+        arr = arr[0]
+    return arr.tolist(), feat_cols
