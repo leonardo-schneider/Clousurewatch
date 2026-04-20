@@ -12,6 +12,13 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+from app_helpers import (
+    risk_color,
+    risk_label,
+    risk_badge,
+    percentile_rank,
+    outcome_banner_html,
+)
 
 # Page config must be first Streamlit command.
 st.set_page_config(
@@ -364,14 +371,22 @@ def load_data() -> pd.DataFrame:
 
 df = load_data()
 
+import os as _os
+_parquet_path = Path("data/processed/ensemble_predictions.parquet")
+_batch_date = (
+    pd.Timestamp(_os.path.getmtime(_parquet_path), unit="s").strftime("%b %Y")
+    if _parquet_path.exists()
+    else "Unknown"
+)
+
 
 def risk_tier(pct: float) -> tuple[str, str, str]:
-    """Return tier name, CSS class, and display color."""
-    if pct >= 60:
-        return "HIGH RISK", "risk-high", "#E24B4A"
-    if pct >= 30:
-        return "ELEVATED", "risk-med", "#EF9F27"
-    return "LOW RISK", "risk-low", "#1DB954"
+    """Return tier name, CSS class, and hex color. pct is 0–100."""
+    frac = pct / 100.0
+    name = risk_label(frac).replace("MEDIUM", "ELEVATED")
+    css  = {"HIGH": "risk-high", "ELEVATED": "risk-med", "LOW": "risk-low"}[name]
+    col  = risk_color(frac)
+    return name, css, col
 
 
 def stars_html(rating: float) -> str:
@@ -663,12 +678,13 @@ with col_risk:
         <div style="margin-top:14px;padding-top:12px;border-top:1px solid #282828;">
             <div style="font-size:10px;font-weight:700;letter-spacing:1.5px;
                         text-transform:uppercase;color:var(--sp-text-hint);margin-bottom:4px">
-                Model confidence
+                Risk Percentile
             </div>
-            <div style="background:#282828;border-radius:3px;height:4px;overflow:hidden">
-                <div style="background:{dot_color};height:100%;
-                            width:{min(selected['risk_pct'] * 1.1, 100):.0f}%;
-                            border-radius:3px;transition:width 0.4s"></div>
+            <div style="font-size:20px;font-weight:800;color:{dot_color}">
+                Top {100 - int(percentile_rank(df["risk_pct"], selected["risk_pct"]) * 100)}%
+            </div>
+            <div style="font-size:10px;color:var(--sp-text-hint);margin-top:2px">
+                riskiest in Tampa Bay
             </div>
         </div>
     </div>
@@ -867,12 +883,12 @@ fig_table.update_layout(
 )
 st.plotly_chart(fig_table, use_container_width=True, config={"displayModeBar": False})
 
-st.markdown("""
+st.markdown(f"""
 <div style="margin-top:2rem;padding-top:1rem;border-top:1px solid #282828;
             display:flex;justify-content:space-between;align-items:center;
             font-size:11px;color:#535353">
     <span>ClosureWatch · ML Final Project · Tampa Bay, FL</span>
     <span>Yelp Academic Dataset · XGBoost Ensemble · AUC-ROC 0.700 · 5,143 restaurants</span>
-    <span style="color:#1DB954;font-weight:700">📡 LIVE</span>
+    <span style="color:#B3B3B3;font-weight:700">📦 BATCH · {_batch_date}</span>
 </div>
 """, unsafe_allow_html=True)
