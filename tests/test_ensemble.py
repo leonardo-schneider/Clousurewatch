@@ -99,10 +99,12 @@ class TestFindOptimalThreshold:
         assert 0.3 <= t <= 0.6
 
     def test_imbalanced_threshold_below_half(self):
-        rng = np.random.default_rng(1)
+        # Positives clustered in [0.65, 0.95], negatives in [0.05, 0.45]
+        # Optimal threshold must fall between the two distributions
         y_true = np.array([1] * 10 + [0] * 90)
-        y_prob  = np.where(y_true == 1,
-                           rng.uniform(0.3, 0.9, 100),
-                           rng.uniform(0.0, 0.5, 100))
+        y_prob = np.concatenate([
+            np.linspace(0.65, 0.95, 10),
+            np.linspace(0.05, 0.45, 90),
+        ])
         t = find_optimal_threshold(y_true, y_prob)
-        assert t < 0.5
+        assert 0.45 <= t <= 0.65
