@@ -78,3 +78,31 @@ class TestComputeMetrics:
         metrics = compute_metrics(y_true, y_prob)
         for v in metrics.values():
             assert isinstance(v, float)
+
+
+find_optimal_threshold = _mod.find_optimal_threshold
+
+
+class TestFindOptimalThreshold:
+    def test_returns_float_in_unit_interval(self):
+        rng = np.random.default_rng(0)
+        y_true = rng.integers(0, 2, 100)
+        y_prob  = rng.uniform(0, 1, 100)
+        t = find_optimal_threshold(y_true, y_prob)
+        assert isinstance(t, float)
+        assert 0.0 <= t <= 1.0
+
+    def test_perfect_separation_threshold_near_midpoint(self):
+        y_true = np.array([0, 0, 0, 1, 1, 1])
+        y_prob  = np.array([0.1, 0.2, 0.3, 0.6, 0.7, 0.8])
+        t = find_optimal_threshold(y_true, y_prob)
+        assert 0.3 <= t <= 0.6
+
+    def test_imbalanced_threshold_below_half(self):
+        rng = np.random.default_rng(1)
+        y_true = np.array([1] * 10 + [0] * 90)
+        y_prob  = np.where(y_true == 1,
+                           rng.uniform(0.3, 0.9, 100),
+                           rng.uniform(0.0, 0.5, 100))
+        t = find_optimal_threshold(y_true, y_prob)
+        assert t < 0.5

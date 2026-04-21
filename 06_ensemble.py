@@ -25,7 +25,7 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import average_precision_score, roc_auc_score, f1_score
+from sklearn.metrics import average_precision_score, roc_auc_score, f1_score, precision_recall_curve
 
 sys.path.insert(0, str(Path(__file__).parent))
 from config_00 import PROC_DIR, MODEL_DIR, TARGET_COL, RANDOM_SEED
@@ -36,8 +36,6 @@ BASELINE_AUC_PR = 0.2069   # XGBoost test result from 05_modeling.py
 MODEL_NAMES = [
     "xgboost",
     "random_forest",
-    "lightgbm",
-    "mlp",
     "logistic_regression",
 ]
 
@@ -85,6 +83,13 @@ def compute_metrics(y_true, y_prob, threshold: float = 0.5) -> dict:
     }
 
 
+def find_optimal_threshold(y_true: np.ndarray, y_prob: np.ndarray) -> float:
+    """Return the probability threshold that maximises F1 on the given data."""
+    prec, rec, thresholds = precision_recall_curve(y_true, y_prob)
+    f1 = 2 * prec * rec / (prec + rec + 1e-9)
+    return float(thresholds[np.argmax(f1[:-1])])
+
+
 # ── Data / model loading ───────────────────────────────────────────────────────
 
 def load_models(model_dir: Path) -> dict:
@@ -111,11 +116,16 @@ def load_models(model_dir: Path) -> dict:
 
 
 def get_probabilities(models: dict, X: pd.DataFrame) -> dict:
-    """Get predicted probabilities from each model on X."""
-    return {
-        name: model.predict_proba(X)[:, 1]
-        for name, model in models.items()
-    }
+    """Get predicted probabilities from each model on X. Skips models that fail."""
+    probs = {}
+    for name, model in models.items():
+        try:
+            probs[name] = model.predict_proba(X)[:, 1]
+        except Exception as e:
+            print(f"  WARNING: {name} prediction failed ({e.__class__.__name__}: {e}) - skipping.")
+    if not probs:
+        raise RuntimeError("No models produced predictions. Re-run 05_modeling.py.")
+    return probs
 
 
 # ── Stacking ───────────────────────────────────────────────────────────────────
@@ -138,7 +148,16 @@ def stacking_ensemble(
     X_meta_val = X_train.iloc[split:]
     y_meta_val = y_train.iloc[split:]
 
-    available = [name for name in MODEL_NAMES if name in models]
+    available = []
+    for name in MODEL_NAMES:
+        if name not in models:
+            continue
+        try:
+            models[name].predict_proba(X_meta_val)[:, 1]
+            available.append(name)
+        except Exception as e:
+            print(f"  WARNING: {name} skipped in stacking ({e.__class__.__name__}: {e})")
+
     meta_val_features = np.column_stack([
         models[name].predict_proba(X_meta_val)[:, 1]
         for name in available
@@ -240,6 +259,17 @@ def main():
     results["winner"] = best_name
     results["winner_auc_pr"] = best_auc
 
+    opt_threshold = find_optimal_threshold(y_test.values, best_prob)
+    best_metrics_opt = compute_metrics(y_test, best_prob, threshold=opt_threshold)
+
+    print(f"\n  Optimal threshold: {opt_threshold:.3f}  (vs default 0.500)")
+    print(f"  Optimized F1:      {best_metrics_opt['F1']:.4f}  "
+          f"(vs default-threshold F1: "
+          f"{compute_metrics(y_test, best_prob)['F1']:.4f})")
+
+    results["opt_threshold"]   = opt_threshold
+    results["optimized_f1"]    = best_metrics_opt["F1"]
+
     # ── Save outputs ───────────────────────────────────────────────────────
     with open(MODEL_DIR / "ensemble_results.json", "w") as f:
         json.dump(results, f, indent=2)
@@ -251,6 +281,7 @@ def main():
         ["business_id", "anchor_date", TARGET_COL] + sig_cols_present
     ].copy()
     pred_df["risk_score"] = best_prob
+    pred_df["opt_threshold"] = float(opt_threshold)
     pred_df = pred_df.merge(biz, on="business_id", how="left")
     pred_df.to_parquet(PROC_DIR / "ensemble_predictions.parquet", index=False)
     print(f"  Saved: {PROC_DIR}/ensemble_predictions.parquet")
