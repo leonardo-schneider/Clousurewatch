@@ -82,6 +82,11 @@ def trend_early_vs_late(series: pd.Series, n: int = 3) -> float:
     return float(late - early)
 
 
+def compute_momentum(first_half_count: int, second_half_count: int) -> float:
+    """Ratio of second-half to first-half event count. < 1.0 means declining activity."""
+    return float(second_half_count) / (first_half_count + 1)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Per-business feature builder
 # ─────────────────────────────────────────────────────────────────────────────
@@ -224,6 +229,25 @@ def build_features_one(
         feat["checkin_velocity"]       = 0.0
         feat["checkin_velocity_slope"] = np.nan
         feat["checkin_drought_flag"]   = 1
+
+    # ── H. Momentum features (decline rate, no leakage) ───────────────────────
+    mid_date = obs_start + relativedelta(months=OBS_MONTHS // 2)
+
+    # Review momentum: second 6 months vs first 6 months
+    if n_rev > 0:
+        first_half_rev = obs_reviews[obs_reviews["date"] < mid_date]
+        last_half_rev  = obs_reviews[obs_reviews["date"] >= mid_date]
+        feat["review_momentum"] = compute_momentum(len(first_half_rev), len(last_half_rev))
+    else:
+        feat["review_momentum"] = 0.0
+
+    # Check-in momentum: second 6 months vs first 6 months
+    if n_checkins > 0:
+        first_half_ci = obs_checkins[obs_checkins["checkin_date"] < mid_date]
+        last_half_ci  = obs_checkins[obs_checkins["checkin_date"] >= mid_date]
+        feat["checkin_momentum"] = compute_momentum(len(first_half_ci), len(last_half_ci))
+    else:
+        feat["checkin_momentum"] = 0.0
 
     # ── F. Owner engagement via tips ───────────────────────────────────────
     n_tips = len(obs_tips)
