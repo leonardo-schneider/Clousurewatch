@@ -133,31 +133,58 @@ Timeline per restaurant:
 
 ---
 
-## Confirmed Results — Full Algorithm Shootout
+## Final Results — Complete Pipeline
+
+### Individual Models (held-out test, 1,244 restaurants)
 
 | Model | CV AUC-PR | Test AUC-PR | Test AUC-ROC | Test F1 |
 |---|---|---|---|---|
-| **XGBoost** (winner) | 0.124 ± 0.039 | **0.2069** | **0.7002** | 0.2448 |
+| XGBoost (best single) | 0.124 ± 0.039 | 0.2069 | 0.7002 | 0.2448 |
 | Random Forest | 0.112 ± 0.054 | 0.1994 | 0.6948 | 0.1347 |
 | LightGBM | 0.091 ± 0.021 | 0.1977 | 0.6699 | 0.2093 |
 | MLP Neural Network | 0.083 ± 0.010 | 0.1592 | 0.6187 | 0.1622 |
 | Logistic Regression (benchmark) | 0.106 ± 0.035 | 0.1574 | 0.6458 | 0.2553 |
 
-- Base rate (random AUC-PR): 0.063
-- XGBoost is 3.3x better than random on AUC-PR
-- XGBoost +31.4% AUC-PR improvement over Logistic Regression benchmark
-- MLP note: lowest CV variance (±0.010) — most stable but peaks lower
-- Dataset: 5,143 restaurants, 326 closures (6.3%), Tampa Bay metro
-- Test set: 1,244 businesses, 129 closures (10.4%), anchored 2020-06 onward
+### Ensemble Model (production)
 
-## Key Predictive Features (from LightGBM importance)
+- Strategy: Stacking with meta-LogisticRegression (XGBoost + RF + LR)
+- Test AUC-PR: 0.1997  |  Test AUC-ROC: 0.6941
+- Optimal threshold: 0.2704 (F1-optimized, vs default 0.5)
+- Optimized F1: 0.2994 (vs 0.22 at threshold 0.5)
 
-Top signals in order:
-1. months_with_zero_reviews  (corr=0.56 with label)
-2. days_since_last_review    (corr=0.56)
-3. review_drought_flag       (corr=0.43)
-4. checkin_drought_flag      (corr=0.34)
-5. pct_5star                 (corr=0.29)
+### Business Operating Point (threshold = 0.27)
+
+- Restaurants flagged high risk: 205 / 1,244 (16.5%)
+- Closures caught: 50 / 129 (38.8% recall)
+- Base rate recall (random): 6.3%
+- Lift over random at threshold: 6x
+
+### Features (48 total)
+
+Added in fine-tuning:
+- `review_momentum`: rate of change in review velocity
+- `checkin_momentum`: rate of change in checkin velocity
+
+### Key Finding
+
+Silence predicts failure. Top features by importance:
+1. months_with_zero_reviews
+2. days_since_last_review
+3. review_drought_flag
+4. checkin_drought_flag
+5. review_momentum (new)
+
+### Momentum Features (added 2026-04-20)
+
+Two features split the 12-month observation window at the midpoint (6 months):
+
+- `review_momentum` — `reviews_last_6m / (reviews_first_6m + 1)`. Values < 1.0 indicate
+  slowing review activity; < 0.5 indicates severe decline. Computed in `build_features_one()`.
+- `checkin_momentum` — `checkins_last_6m / (checkins_first_6m + 1)`. Same interpretation
+  for foot traffic. Addresses the limitation that `days_since_last_review=60` could mean
+  stable or freefall — momentum disambiguates.
+
+Both features use only `date < anchor_date` data (no leakage).
 
 ---
 
