@@ -292,6 +292,62 @@ hr { border-color: #282828 !important; margin: 1rem 0 !important; }
     overflow: hidden;
     text-overflow: ellipsis;
 }
+
+.cw-card {
+    border: 1px solid #2a2a2a;
+    border-radius: 12px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: border-color 0.2s;
+    background: #181818;
+    margin-bottom: 4px;
+}
+.cw-card:hover { border-color: #1db954; }
+.cw-card.selected { border: 2px solid #1db954; }
+.cw-card-img {
+    width: 100%;
+    height: 140px;
+    object-fit: cover;
+    display: block;
+}
+.cw-card-img-placeholder {
+    width: 100%;
+    height: 140px;
+    background: #2a2a2a;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #535353;
+    font-size: 12px;
+}
+.cw-card-body { padding: 10px 12px 12px; }
+.cw-card-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 2px;
+}
+.cw-card-meta { font-size: 11px; color: #b3b3b3; margin-bottom: 8px; }
+.cw-card-stats {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: #b3b3b3;
+}
+.cw-badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 20px;
+    letter-spacing: 0.04em;
+}
+.cw-badge-HIGH { background: #3d0000; color: #ff4444; }
+.cw-badge-MEDIUM { background: #3d2800; color: #ffaa00; }
+.cw-badge-LOW { background: #003d1a; color: #1db954; }
 </style>
 """
 
@@ -388,6 +444,14 @@ def load_feature_matrix() -> pd.DataFrame | None:
     return None
 
 
+@st.cache_data
+def load_photo_index():
+    path = Path("data/processed/photo_index.parquet")
+    if path.exists():
+        return pd.read_parquet(path).set_index("business_id")
+    return pd.DataFrame()
+
+
 df = load_data()
 _xgb_model = load_xgb_model()
 _feat_matrix = load_feature_matrix()
@@ -427,6 +491,45 @@ FEAT_LABELS = {
     "avg_sentiment_score": "Avg sentiment score",
     "review_count_12m": "Review count (12m)",
 }
+
+
+def restaurant_card_html(row, photo_index, selected=False):
+    bid = row["business_id"]
+    risk_pct = row["risk_pct"]
+    tier, css_class, hex_color = risk_tier(risk_pct)
+
+    # Photo
+    photo_html = ""
+    if bid in photo_index.index:
+        photo_path = photo_index.loc[bid, "path"]
+        if Path(photo_path).exists():
+            import base64
+            with open(photo_path, "rb") as f:
+                b64 = base64.b64encode(f.read()).decode()
+            photo_html = f'<img class="cw-card-img" src="data:image/jpeg;base64,{b64}" />'
+    if not photo_html:
+        cat = str(row.get("categories", "")).split(",")[0].strip()[:20]
+        photo_html = f'<div class="cw-card-img-placeholder">{cat if cat else "No photo"}</div>'
+
+    selected_class = "selected" if selected else ""
+    stars = row.get("stars_yelp_global", row.get("stars_yelp", row.get("stars", 0)))
+
+    return f"""
+    <div class="cw-card {selected_class}">
+        {photo_html}
+        <div class="cw-card-body">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+                <div class="cw-card-name">{row['name']}</div>
+                <span class="cw-badge cw-badge-{tier}">{tier}</span>
+            </div>
+            <div class="cw-card-meta">{row.get('city', 'Tampa')} &nbsp;·&nbsp; {stars:.1f}★</div>
+            <div class="cw-card-stats">
+                <span style="color:{hex_color};font-weight:700">{risk_pct:.1f}% risk</span>
+                <span>{int(row.get('days_since_last_review', 0))}d silent</span>
+            </div>
+        </div>
+    </div>
+    """
 
 # Session state bootstrap must happen before the sidebar renders.
 if "selected_idx" not in st.session_state:
@@ -661,6 +764,54 @@ with st.sidebar:
     """, unsafe_allow_html=True)
 
 
+# ── Card grid ──────────────────────────────────────────────────────
+photo_index = load_photo_index()
+
+st.markdown("### Restaurants")
+
+# Show top N cards based on current filter + sort
+CARDS_PER_PAGE = 12
+display_df = filtered.head(CARDS_PER_PAGE).reset_index(drop=True)
+
+cols = st.columns(3)
+for i, (_, row) in enumerate(display_df.iterrows()):
+    col = cols[i % 3]
+    with col:
+        bid = row["business_id"]
+        is_selected = (st.session_state.selected_idx is not None and
+                       df.loc[st.session_state.selected_idx, "business_id"] == bid)
+
+        card_html = restaurant_card_html(row, photo_index, selected=is_selected)
+        st.markdown(card_html, unsafe_allow_html=True)
+
+        # Invisible button for click handling — overlaid via CSS
+        if st.button("select", key=f"card_{bid}",
+                     help=row['name'],
+                     use_container_width=True):
+            # Find idx in original df
+            idx = df[df["business_id"] == bid].index[0]
+            st.session_state.selected_idx = idx
+            st.rerun()
+
+# Add CSS to hide the button text and overlay it on the card
+st.markdown("""
+<style>
+div[data-testid="stButton"] button {
+    opacity: 0;
+    position: relative;
+    margin-top: -172px;
+    height: 172px;
+    width: 100%;
+    z-index: 10;
+    border: none;
+    background: transparent;
+}
+</style>
+""", unsafe_allow_html=True)
+
+st.divider()
+# ── existing detail panel follows here unchanged ──
+
 sel_idx = st.session_state.selected_idx
 if sel_idx not in df.index:
     sel_idx = int(df.index[0])
@@ -847,35 +998,6 @@ with dist_col:
         ),
     )
     st.plotly_chart(fig_dist, use_container_width=True, config={"displayModeBar": False})
-
-st.markdown("---")
-
-st.markdown('<div class="section-label">🔴 Highest Risk — Watch List</div>', unsafe_allow_html=True)
-
-top20 = df.head(20).copy()
-top20_display = pd.DataFrame({
-    "Restaurant": top20["name"].values,
-    "Risk %":     top20["risk_pct"].apply(lambda x: f"{x:.1f}%").values,
-    "Tier":       top20["risk_pct"].apply(lambda x: risk_tier(x)[0]).values,
-    "Stars ⭐":   top20.get("stars", pd.Series(["-"] * len(top20))).apply(
-                      lambda x: f"{x:.1f}" if isinstance(x, (int, float)) else str(x)
-                  ).values,
-})
-
-event = st.dataframe(
-    top20_display,
-    use_container_width=True,
-    on_select="rerun",
-    selection_mode="single-row",
-    hide_index=True,
-)
-
-if event.selection.rows:
-    clicked_local = event.selection.rows[0]
-    new_idx = int(top20.index[clicked_local])
-    if new_idx != st.session_state.selected_idx:
-        st.session_state.selected_idx = new_idx
-        st.rerun()
 
 st.markdown(f"""
 <div style="margin-top:2rem;padding-top:1rem;border-top:1px solid #282828;
