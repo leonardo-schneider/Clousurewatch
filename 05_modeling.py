@@ -129,7 +129,7 @@ def time_split(df: pd.DataFrame, test_frac: float):
     train_val = df_sorted.iloc[:-n_test].copy()
     test       = df_sorted.iloc[-n_test:].copy()
     print(f"  Train/Val: {len(train_val):,}  |  Test: {len(test):,}")
-    print(f"  Test anchor range: {test['anchor_date'].min().date()} → {test['anchor_date'].max().date()}")
+    print(f"  Test anchor range: {test['anchor_date'].min().date()} -> {test['anchor_date'].max().date()}")
     return train_val, test
 
 
@@ -264,7 +264,7 @@ def plot_pr_roc(test_probs: dict, y_true, split_name: str, save_name: str):
     plt.tight_layout()
     plt.savefig(FIG_DIR / save_name, bbox_inches="tight")
     plt.close()
-    print(f"  Saved → {FIG_DIR}/{save_name}")
+    print(f"  Saved -> {FIG_DIR}/{save_name}")
 
 
 def plot_feature_importance(model, feature_names, top_n=20):
@@ -279,7 +279,7 @@ def plot_feature_importance(model, feature_names, top_n=20):
     plt.tight_layout()
     plt.savefig(FIG_DIR / "08_feature_importance.png", bbox_inches="tight")
     plt.close()
-    print(f"  Saved → {FIG_DIR}/08_feature_importance.png")
+    print(f"  Saved -> {FIG_DIR}/08_feature_importance.png")
 
 
 def plot_confusion(y_true, y_prob, threshold=0.5, model_name="Model"):

@@ -346,7 +346,7 @@ def main():
             print(f"    {col:40s}  {pct:.0%} null")
 
     features.to_parquet(PROC_DIR / "features.parquet", index=False)
-    print(f"\n  Saved → {PROC_DIR}/features.parquet")
+    print(f"\n  Saved -> {PROC_DIR}/features.parquet")
 
     # ── Quick sanity check ─────────────────────────────────────────────────
     print(f"\n  Label balance in feature set:")
