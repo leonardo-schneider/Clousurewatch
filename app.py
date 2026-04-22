@@ -356,6 +356,11 @@ hr { border-color: #282828 !important; margin: 1rem 0 !important; }
     font-size: 11px !important;
     padding: 4px 6px !important;
 }
+
+div[data-testid="stRadio"] label:nth-child(1) span { color: #b3b3b3; }
+div[data-testid="stRadio"] label:nth-child(2) span { color: #ff4444; }
+div[data-testid="stRadio"] label:nth-child(3) span { color: #ffaa00; }
+div[data-testid="stRadio"] label:nth-child(4) span { color: #1db954; }
 </style>
 """
 
@@ -626,37 +631,23 @@ with st.sidebar:
         label_visibility="collapsed",
     )
 
-    st.markdown(
-        '<div class="section-label" style="padding:0 2px;margin-top:10px">Filter by tier</div>',
-        unsafe_allow_html=True,
+    st.markdown("**FILTER BY TIER**", unsafe_allow_html=True)
+    tier_filter = st.radio(
+        label="tier",
+        options=["All", "HIGH", "ELEVATED", "LOW"],
+        index=["All", "HIGH", "ELEVATED", "LOW"].index(
+            st.session_state.get("tier_filter", "All")
+        ),
+        label_visibility="collapsed",
+        format_func=lambda x: {
+            "All": "\u2b24  All tiers",
+            "HIGH": "\u2b24  HIGH",
+            "ELEVATED": "\u2b24  MEDIUM",
+            "LOW": "\u2b24  LOW",
+        }[x],
     )
-
-    pill_cols = st.columns([1.2, 1.2, 1.2, 1.2])
-    pills = [
-        ("All", "All", "#B3B3B3"),
-        ("● HIGH", "HIGH", "#E24B4A"),
-        ("● MID", "ELEVATED", "#EF9F27"),
-        ("● LOW", "LOW", "#1DB954"),
-    ]
-    for col, (label, value, _color) in zip(pill_cols, pills):
-        with col:
-            if st.button(label, key=f"pill_{value}"):
-                st.session_state.tier_filter = value
-
-    active = st.session_state.tier_filter
-    tier_colors_map = {
-        "All": "#B3B3B3",
-        "HIGH": "#E24B4A",
-        "ELEVATED": "#EF9F27",
-        "LOW": "#1DB954",
-    }
-    active_color = tier_colors_map.get(active, "#B3B3B3")
-    st.markdown(
-        f'<div style="font-size:10px;color:{active_color};font-weight:700;'
-        f'letter-spacing:1.5px;padding:4px 2px 2px 2px">'
-        f'▸ SHOWING: {active.upper()}</div>',
-        unsafe_allow_html=True,
-    )
+    st.session_state.tier_filter = tier_filter
+    active = tier_filter
 
     st.markdown(
         '<div class="section-label" style="padding:0 2px;margin-top:10px">Risk range</div>',
