@@ -7,7 +7,8 @@ Run:
     python 07_model_analysis.py
 """
 import warnings
-warnings.filterwarnings("ignore")
+warnings.filterwarnings("ignore", category=UserWarning, module="shap")
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 import numpy as np
 import pandas as pd
@@ -19,7 +20,7 @@ import shap
 from pathlib import Path
 from sklearn.metrics import precision_recall_curve, average_precision_score, f1_score
 
-from config_00 import PROC_DIR, MODEL_DIR, FIG_DIR, TARGET_COL
+from config_00 import PROC_DIR, MODEL_DIR, FIG_DIR, TARGET_COL, COVID_START, COVID_END
 
 plt.rcParams.update({
     "font.family": "serif",
@@ -29,8 +30,8 @@ plt.rcParams.update({
 })
 PALETTE = {0: "#2E86AB", 1: "#E84855"}
 
-COVID_START = pd.Timestamp("2020-03-01")
-COVID_END   = pd.Timestamp("2021-06-01")
+COVID_START = pd.Timestamp(COVID_START)
+COVID_END   = pd.Timestamp(COVID_END)
 OPT_THRESHOLD = 0.2704   # from ensemble_results.json
 
 _META = {"business_id", "closed_within_6m", "anchor_date", "city", "state", "covid_flag"}
@@ -53,9 +54,10 @@ def load_data():
     preds = pd.read_parquet(PROC_DIR / "ensemble_predictions.parquet")
     model = joblib.load(MODEL_DIR / "xgboost.pkl")
 
-    # Merge test predictions with full feature set
+    # Drop all columns that preds already has (except business_id join key)
+    overlap = set(preds.columns) - {"business_id"}
     test = preds.merge(
-        feat.drop(columns=["closed_within_6m"], errors="ignore"),
+        feat.drop(columns=list(overlap), errors="ignore"),
         on="business_id", how="left",
     )
     test["predicted"] = (test["risk_score"] >= OPT_THRESHOLD).astype(int)
