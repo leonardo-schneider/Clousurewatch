@@ -58,3 +58,8 @@ LGBM_EARLY_STOPPING = 100
 # ── VADER / NLP ────────────────────────────────────────────────────────────
 MIN_REVIEWS_FOR_TREND = 4   # need at least N reviews to compute trend features
 REVIEW_DROUGHT_DAYS   = 90  # flag if no reviews in last N days of obs window
+
+# ── COVID window ────────────────────────────────────────────────────────────
+COVID_START = "2020-03-01"   # WHO pandemic declaration
+COVID_END   = "2021-06-01"   # matches LATEST_ANCHOR (businesses anchored here
+                              # had their outcome window fully inside lockdown era)
