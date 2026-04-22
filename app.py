@@ -722,40 +722,6 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
 
-    st.markdown('<div class="section-label" style="padding:0 2px">Results</div>', unsafe_allow_html=True)
-
-    if filtered.empty:
-        st.markdown(
-            '<div style="color:#535353;font-size:12px;padding:8px 2px">No restaurants match.</div>',
-            unsafe_allow_html=True,
-        )
-    else:
-        for i, row in filtered.head(50).iterrows():
-            _tier, _css, dot_col = risk_tier(row["risk_pct"])
-            is_active = i == st.session_state.selected_idx
-
-            st.markdown(f"""
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:1px;
-                        border-radius:4px;background:{'rgba(29,185,84,0.09)' if is_active else 'transparent'};
-                        border-left:{'3px solid #1DB954' if is_active else '3px solid transparent'};
-                        padding-left:4px">
-                <span style="width:8px;height:8px;border-radius:50%;flex-shrink:0;
-                             background:{dot_col};display:inline-block;margin-left:2px"></span>
-                <span style="font-size:10px;font-weight:700;font-family:'DM Mono',monospace;
-                             color:{dot_col};min-width:34px">{row['risk_pct']:.0f}%</span>
-            </div>
-            """, unsafe_allow_html=True)
-
-            clicked = st.button(
-                f"{'▶ ' if is_active else ''}{row['name']}",
-                key=f"rest_{i}",
-                use_container_width=True,
-            )
-            if clicked:
-                st.session_state.selected_idx = i
-                st.rerun()
-
-    st.markdown("---")
     st.markdown(f"""
         <div style="font-size:10px;color:#535353;padding:0 2px">
             {len(filtered)} shown · {len(df)} total<br>
@@ -784,27 +750,30 @@ for i, (_, row) in enumerate(display_df.iterrows()):
         card_html = restaurant_card_html(row, photo_index, selected=is_selected)
         st.markdown(card_html, unsafe_allow_html=True)
 
-        # Invisible button for click handling — overlaid via CSS
-        if st.button("select", key=f"card_{bid}",
-                     help=row['name'],
-                     use_container_width=True):
-            # Find idx in original df
+        if st.button(
+            f"View details \u2192 {row['name'][:25]}",
+            key=f"card_{bid}",
+            use_container_width=True,
+        ):
             idx = df[df["business_id"] == bid].index[0]
             st.session_state.selected_idx = idx
             st.rerun()
 
-# Add CSS to hide the button text and overlay it on the card
 st.markdown("""
 <style>
-div[data-testid="stButton"] button {
-    opacity: 0;
-    position: relative;
-    margin-top: -172px;
-    height: 172px;
-    width: 100%;
-    z-index: 10;
-    border: none;
+div[data-testid="stButton"] > button {
     background: transparent;
+    border: 1px solid #2a2a2a;
+    color: #b3b3b3;
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: 0 0 12px 12px;
+    margin-top: -4px;
+    transition: color 0.15s, border-color 0.15s;
+}
+div[data-testid="stButton"] > button:hover {
+    color: #1db954;
+    border-color: #1db954;
 }
 </style>
 """, unsafe_allow_html=True)
