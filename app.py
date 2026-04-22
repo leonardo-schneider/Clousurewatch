@@ -348,6 +348,14 @@ hr { border-color: #282828 !important; margin: 1rem 0 !important; }
 .cw-badge-HIGH { background: #3d0000; color: #ff4444; }
 .cw-badge-MEDIUM { background: #3d2800; color: #ffaa00; }
 .cw-badge-LOW { background: #003d1a; color: #1db954; }
+
+.tier-btn button {
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    font-size: 11px !important;
+    padding: 4px 6px !important;
+}
 </style>
 """
 
@@ -623,12 +631,12 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
 
-    pill_cols = st.columns(4)
+    pill_cols = st.columns([1.2, 1.2, 1.2, 1.2])
     pills = [
         ("All", "All", "#B3B3B3"),
-        ("🔴 High", "HIGH", "#E24B4A"),
-        ("🟡 Mid", "ELEVATED", "#EF9F27"),
-        ("🟢 Low", "LOW", "#1DB954"),
+        ("● HIGH", "HIGH", "#E24B4A"),
+        ("● MID", "ELEVATED", "#EF9F27"),
+        ("● LOW", "LOW", "#1DB954"),
     ]
     for col, (label, value, _color) in zip(pill_cols, pills):
         with col:
