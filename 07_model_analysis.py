@@ -137,6 +137,8 @@ def main():
     print("[2b] Outlier profiles...")
     plot_outlier_profiles(feat)
 
+    # Remaining plots added in Tasks 4-8
+
 
 if __name__ == "__main__":
     main()
