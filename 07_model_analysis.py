@@ -189,8 +189,8 @@ def plot_covid_cohort(feat: pd.DataFrame):
         for j, g in enumerate([0, 1]):
             grp = feat[feat["covid_flag"] == g]
             rate = grp[TARGET_COL].mean()
-            ax.text(j + 1, ax.get_ylim()[1] * 0.97,
-                    f"close={rate:.0%}", ha="center", fontsize=7, color=colors[g])
+            ax.text(j + 1, ax.get_ylim()[1],
+                    f"close={rate:.0%}", ha="center", va="top", fontsize=7, color=colors[g])
 
     for j in range(i + 1, len(axes)):
         axes[j].set_visible(False)
@@ -265,13 +265,13 @@ def plot_shap_global(test: pd.DataFrame, model):
     else:
         sv = np.array(shap_values)
 
-    fig, ax = plt.subplots(figsize=(10, 7))
     shap.summary_plot(
         sv, X_test,
         plot_type="dot",
         show=False,
         max_display=20,
         color_bar_label="Feature value",
+        plot_size=(10, 7),
     )
     plt.title("SHAP Global Feature Importance — Full Test Set",
               fontweight="bold", pad=10)
@@ -334,14 +334,14 @@ def compare_xgb_vs_ensemble(test: pd.DataFrame, model):
     X = test[feat_cols].fillna(test[feat_cols].median())
     y_xgb = model.predict_proba(X)[:, 1]
 
-    def metrics(y_true, y_prob, label):
-        prec, rec, thr = precision_recall_curve(y_true, y_prob)
+    def metrics(y_t, y_p, label):
+        prec, rec, thr = precision_recall_curve(y_t, y_p)
         f1s = 2 * prec * rec / (prec + rec + 1e-9)
         best_idx = np.argmax(f1s[:-1])
         opt_t = thr[best_idx]
-        ap = average_precision_score(y_true, y_prob)
-        y_pred = (y_prob >= opt_t).astype(int)
-        f1 = f1_score(y_true, y_pred)
+        ap = average_precision_score(y_t, y_p)
+        y_pred = (y_p >= opt_t).astype(int)
+        f1 = f1_score(y_t, y_pred)
         return {"model": label, "AUC-PR": round(ap, 4),
                 "opt_threshold": round(float(opt_t), 4), "F1": round(f1, 4)}
 
