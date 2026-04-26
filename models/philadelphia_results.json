@@ -1,0 +1,25 @@
+{
+  "tampa": {
+    "city": "Tampa Bay",
+    "n_restaurants": 1244,
+    "n_closed": 129,
+    "base_rate": 0.1037,
+    "AUC_PR": 0.2034,
+    "AUC_ROC": 0.6944,
+    "f1_at_tampa_threshold": 0.1879
+  },
+  "philadelphia": {
+    "city": "Philadelphia",
+    "n_restaurants": 5033,
+    "n_closed": 338,
+    "base_rate": 0.0672,
+    "AUC_PR": 0.0719,
+    "AUC_ROC": 0.5292,
+    "opt_threshold_local": 0.3701,
+    "opt_f1_local": 0.1428,
+    "f1_at_tampa_threshold": 0.1259,
+    "flagged_at_tampa_threshold": 5033,
+    "caught_at_tampa_threshold": 338,
+    "recall_at_tampa_threshold": 1.0
+  }
+}
