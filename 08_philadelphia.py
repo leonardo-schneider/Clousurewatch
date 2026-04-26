@@ -113,8 +113,14 @@ def build_labels_philly(biz: pd.DataFrame, reviews: pd.DataFrame) -> pd.DataFram
         obs_start   = anchor - relativedelta(months=OBS_MONTHS)
         outcome_end = anchor + relativedelta(months=OUTCOME_MONTHS)
 
-        last_review = rev["date"].max()
-        closed = int(b["is_open"] == 0 and last_review <= outcome_end)
+        last_review_ever = rev["date"].max()
+        # Mirror 02_build_labels.py build_label() — review recency only, not is_open
+        if last_review_ever > outcome_end + relativedelta(months=3):
+            closed = 0
+        elif last_review_ever <= outcome_end:
+            closed = 1
+        else:
+            closed = 0  # ambiguous window
 
         rows.append({
             "business_id":        bid,
@@ -184,12 +190,12 @@ def build_features_philly(
 
 def predict_and_compare(features: pd.DataFrame, model) -> dict:
     """Apply Tampa model to Philly features and compute metrics."""
-    feat_cols = [c for c in model.feature_names_in_ if c in features.columns]
-    missing = [c for c in model.feature_names_in_ if c not in features.columns]
+    feat_cols = list(model.feature_names_in_)
+    missing = [c for c in feat_cols if c not in features.columns]
     if missing:
         print(f"    WARNING: {len(missing)} features missing from Philly data: {missing}")
 
-    X = features[feat_cols].copy().fillna(features[feat_cols].median())
+    X = features.reindex(columns=feat_cols).fillna(features.reindex(columns=feat_cols).median())
     y_true = features[TARGET_COL].values
     y_prob = model.predict_proba(X)[:, 1]
 
