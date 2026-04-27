@@ -10,16 +10,16 @@
   },
   "philadelphia": {
     "city": "Philadelphia",
-    "n_restaurants": 5033,
-    "n_closed": 597,
-    "base_rate": 0.1186,
-    "AUC_PR": 0.1629,
-    "AUC_ROC": 0.6312,
-    "opt_threshold_local": 0.4079,
-    "opt_f1_local": 0.2614,
-    "f1_at_tampa_threshold": 0.2121,
-    "flagged_at_tampa_threshold": 5033,
-    "caught_at_tampa_threshold": 597,
+    "n_restaurants": 4258,
+    "n_closed": 455,
+    "base_rate": 0.1069,
+    "AUC_PR": 0.1421,
+    "AUC_ROC": 0.6173,
+    "opt_threshold_local": 0.4025,
+    "opt_f1_local": 0.238,
+    "f1_at_tampa_threshold": 0.1931,
+    "flagged_at_tampa_threshold": 4258,
+    "caught_at_tampa_threshold": 455,
     "recall_at_tampa_threshold": 1.0
   }
 }

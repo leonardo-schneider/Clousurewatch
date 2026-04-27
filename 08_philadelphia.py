@@ -34,9 +34,12 @@ from tqdm import tqdm
 
 from config_00 import (
     RAW_DIR, MODEL_DIR, FIG_DIR,
-    OBS_MONTHS, OUTCOME_MONTHS, EARLIEST_ANCHOR, LATEST_ANCHOR,
+    OBS_MONTHS, OUTCOME_MONTHS, EARLIEST_ANCHOR,
     TARGET_COL,
 )
+
+# Cap Philly anchors before COVID distortion in review density
+LATEST_ANCHOR = "2020-06-01"
 
 PHILLY_DIR = Path("data/processed_philly")
 PHILLY_DIR.mkdir(parents=True, exist_ok=True)
@@ -239,63 +242,75 @@ def main():
     print("STEP 8 -- Philadelphia Zero-Shot Generalization")
     print("=" * 60)
 
-    # ── 1. Load businesses ────────────────────────────────────────────────
-    biz = load_philly_businesses()
-    biz.to_parquet(PHILLY_DIR / "businesses.parquet", index=False)
-    print(f"    Saved businesses.parquet ({len(biz):,} rows)")
+    # ── 1. Load businesses (skip if parquet already exists) ───────────────
+    if (PHILLY_DIR / "businesses.parquet").exists():
+        print("  Loading businesses from checkpoint...")
+        biz = pd.read_parquet(PHILLY_DIR / "businesses.parquet")
+        print(f"    Loaded businesses.parquet ({len(biz):,} rows)")
+    else:
+        biz = load_philly_businesses()
+        biz.to_parquet(PHILLY_DIR / "businesses.parquet", index=False)
+        print(f"    Saved businesses.parquet ({len(biz):,} rows)")
 
-    # ── 2. Load reviews, checkins, tips for Philly businesses ─────────────
+    # ── 2. Load reviews, checkins, tips (skip if parquets already exist) ──
     philly_bids = set(biz["business_id"])
 
-    print("  Loading reviews (this takes ~2 min)...")
-    rev_rows = []
-    with open(RAW_DIR / "yelp_academic_dataset_review.json", encoding=ENCODING) as f:
-        for line in f:
-            r = json.loads(line)
-            if r["business_id"] not in philly_bids:
-                continue
-            rev_rows.append({
-                "business_id": r["business_id"],
-                "date":        pd.Timestamp(r["date"]),
-                "stars":       float(r["stars"]),
-                "text":        r.get("text", ""),
-                "useful":      int(r.get("useful", 0)),
-                "funny":       int(r.get("funny", 0)),
-                "cool":        int(r.get("cool", 0)),
-            })
-    reviews = pd.DataFrame(rev_rows)
-    reviews.to_parquet(PHILLY_DIR / "reviews.parquet", index=False)
-    print(f"    Saved reviews.parquet ({len(reviews):,} rows)")
+    if (PHILLY_DIR / "reviews.parquet").exists():
+        print("  Loading reviews from checkpoint...")
+        reviews = pd.read_parquet(PHILLY_DIR / "reviews.parquet")
+        checkins = pd.read_parquet(PHILLY_DIR / "checkins.parquet")
+        tips = pd.read_parquet(PHILLY_DIR / "tips.parquet")
+        print(f"    reviews={len(reviews):,}  checkins={len(checkins):,}  tips={len(tips):,}")
+    else:
+        print("  Loading reviews (this takes ~2 min)...")
+        rev_rows = []
+        with open(RAW_DIR / "yelp_academic_dataset_review.json", encoding=ENCODING) as f:
+            for line in f:
+                r = json.loads(line)
+                if r["business_id"] not in philly_bids:
+                    continue
+                rev_rows.append({
+                    "business_id": r["business_id"],
+                    "date":        pd.Timestamp(r["date"]),
+                    "stars":       float(r["stars"]),
+                    "text":        r.get("text", ""),
+                    "useful":      int(r.get("useful", 0)),
+                    "funny":       int(r.get("funny", 0)),
+                    "cool":        int(r.get("cool", 0)),
+                })
+        reviews = pd.DataFrame(rev_rows)
+        reviews.to_parquet(PHILLY_DIR / "reviews.parquet", index=False)
+        print(f"    Saved reviews.parquet ({len(reviews):,} rows)")
 
-    print("  Loading checkins...")
-    ci_rows = []
-    with open(RAW_DIR / "yelp_academic_dataset_checkin.json", encoding=ENCODING) as f:
-        for line in f:
-            r = json.loads(line)
-            if r["business_id"] not in philly_bids:
-                continue
-            for ts in r.get("date", "").split(", "):
-                ts = ts.strip()
-                if ts:
-                    ci_rows.append({"business_id": r["business_id"],
-                                    "checkin_date": pd.Timestamp(ts)})
-    checkins = pd.DataFrame(ci_rows)
-    checkins.to_parquet(PHILLY_DIR / "checkins.parquet", index=False)
-    print(f"    Saved checkins.parquet ({len(checkins):,} rows)")
+        print("  Loading checkins...")
+        ci_rows = []
+        with open(RAW_DIR / "yelp_academic_dataset_checkin.json", encoding=ENCODING) as f:
+            for line in f:
+                r = json.loads(line)
+                if r["business_id"] not in philly_bids:
+                    continue
+                for ts in r.get("date", "").split(", "):
+                    ts = ts.strip()
+                    if ts:
+                        ci_rows.append({"business_id": r["business_id"],
+                                        "checkin_date": pd.Timestamp(ts)})
+        checkins = pd.DataFrame(ci_rows)
+        checkins.to_parquet(PHILLY_DIR / "checkins.parquet", index=False)
+        print(f"    Saved checkins.parquet ({len(checkins):,} rows)")
 
-    print("  Loading tips...")
-    tip_rows = []
-    with open(RAW_DIR / "yelp_academic_dataset_tip.json", encoding=ENCODING) as f:
-        for line in f:
-            r = json.loads(line)
-            if r["business_id"] not in philly_bids:
-                continue
-            tip_rows.append({"business_id": r["business_id"],
-                             "date": pd.Timestamp(r["date"]),
-                             "compliment_count": int(r.get("compliment_count", 0))})
-    tips = pd.DataFrame(tip_rows)
-    tips.to_parquet(PHILLY_DIR / "tips.parquet", index=False)
-    print(f"    Saved tips.parquet ({len(tips):,} rows)")
+        print("  Loading tips...")
+        tip_rows = []
+        with open(RAW_DIR / "yelp_academic_dataset_tip.json", encoding=ENCODING) as f:
+            for line in f:
+                r = json.loads(line)
+                if r["business_id"] not in philly_bids:
+                    continue
+                tip_rows.append({"business_id": r["business_id"],
+                                 "date": pd.Timestamp(r["date"]),
+                                 "compliment_count": int(r.get("compliment_count", 0))})
+        tips = pd.DataFrame(tip_rows)
+        tips.to_parquet(PHILLY_DIR / "tips.parquet", index=False)
+        print(f"    Saved tips.parquet ({len(tips):,} rows)")
 
     # ── 3. Build labels ────────────────────────────────────────────────────
     print("  Building labels...")
