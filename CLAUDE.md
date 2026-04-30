@@ -188,6 +188,30 @@ Both features use only `date < anchor_date` data (no leakage).
 
 ---
 
+## Cross-City Generalization (Zero-Shot)
+
+Model trained on Tampa Bay only, applied to Philadelphia without retraining.
+
+| Metric | Tampa (test) | Philadelphia (zero-shot) |
+|---|---|---|
+| N restaurants | 1,244 | 4,258 |
+| Base rate | 10.4% | 10.7% |
+| AUC-ROC | 0.694 | 0.617 |
+| AUC-PR | 0.203 | 0.142 |
+| F1 | 0.188 | 0.193 |
+
+**Key finding:** AUC-ROC degrades 11% cross-city (ranking signal is partially universal). AUC-PR degrades 30% (calibration is local — Philadelphia has lower review density, making silence signals noisier).
+
+**Conclusion:** Signals are universal, calibration is local. Retraining on local data recommended for production deployment.
+
+### Data Quality Notes
+- COVID uplift: Tampa +3.1pp, Philadelphia +5.7pp closure rate
+- 2021 cohort excluded from both cities (dataset edge artifact)
+- Philadelphia review density ~40% lower than Tampa per restaurant
+- Zero duplicates, clean schema in both cities
+
+---
+
 ## Dependencies
 
 ```bash
