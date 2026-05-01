@@ -291,7 +291,6 @@ def main():
 
     city  = args.city
     state = args.state
-    slug  = city_slug(city)
     odir  = out_dir(city)
 
     print("=" * 60)
@@ -338,13 +337,13 @@ def main():
         labeled = build_labels(biz, reviews)
         labeled.to_parquet(lab_path, index=False)
 
-    n_closed = int(labeled[TARGET_COL].sum())
-    rate = n_closed / len(labeled) if len(labeled) > 0 else 0
-    print(f"  Labeled: {len(labeled):,} restaurants, {n_closed} closed ({rate:.1%})")
-
     if len(labeled) < MIN_LABELED:
         print(f"  WARNING: Only {len(labeled)} labeled restaurants (< {MIN_LABELED}). Exiting.")
         return
+
+    n_closed = int(labeled[TARGET_COL].sum())
+    rate = n_closed / len(labeled)
+    print(f"  Labeled: {len(labeled):,} restaurants, {n_closed} closed ({rate:.1%})")
 
     # ── 4. Feature engineering (always re-run to ensure has_photo is present) ─
     print("  Engineering features (VADER is slow, ~20-40 min)...")
