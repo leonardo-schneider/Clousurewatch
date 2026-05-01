@@ -38,14 +38,6 @@ MIN_LABELED   = 50
 ENCODING      = "utf-8"
 PHOTO_INDEX   = Path("data/processed/photo_index.parquet")
 
-plt_style = {
-    "font.family": "serif",
-    "figure.dpi": 150,
-    "axes.spines.top": False,
-    "axes.spines.right": False,
-}
-
-
 def city_slug(city: str) -> str:
     return city.lower().replace(" ", "_")
 

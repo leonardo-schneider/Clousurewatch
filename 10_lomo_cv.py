@@ -167,7 +167,8 @@ def run_lomo_fold(
     final_model.fit(X_full, y_full, verbose=False)
 
     # Evaluate on held-out metro
-    # Use train-split medians for imputation (fit on 80% of train_pool; no held-out data)
+    # Reuses 80%-split medians for held-out imputation (conservative: no held-out
+    # data contaminates medians, at the cost of slight miscalibration on X_full).
     X_held = held_df.reindex(columns=feat_cols).fillna(train_medians)
     y_held = held_df[TARGET_COL]
 
@@ -321,7 +322,7 @@ def main():
 
     # ── 3. Aggregate metrics ────────────────────────────────────────────────
     auc_prs  = [r["AUC_PR"]  for r in fold_results]
-    auc_rocs = [r["AUC_ROC"] for r in fold_results if not np.isnan(r["AUC_ROC"])]
+    auc_rocs = [r["AUC_ROC"] for r in fold_results if not np.isnan(r["AUC_ROC"])]  # NaN if held-out is single-class
     aggregate = {
         "mean_AUC_PR":  round(float(np.mean(auc_prs)),  4),
         "std_AUC_PR":   round(float(np.std(auc_prs)),   4),
