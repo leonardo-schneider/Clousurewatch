@@ -346,9 +346,12 @@ def main():
     edmonton_results = evaluate_edmonton(global_model, feat_cols, train_medians)
 
     # ── 6. Save results JSON ────────────────────────────────────────────────
+    def _nan_to_none(v):
+        return None if isinstance(v, float) and np.isnan(v) else v
+
     results = {
         "folds": [
-            {k: v for k, v in r.items() if k not in ("best_params", "val_AUC_PR")}
+            {k: _nan_to_none(v) for k, v in r.items() if k not in ("best_params", "val_AUC_PR")}
             for r in fold_results
         ],
         "aggregate": aggregate,
