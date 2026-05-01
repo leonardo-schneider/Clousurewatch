@@ -113,16 +113,12 @@ def tune_xgb(
 
     for params in PARAM_GRID:
         model = XGBClassifier(**params)
-        model.fit(
-            X_train, y_train,
-            eval_set=[(X_val, y_val)],
-            verbose=False,
-        )
+        model.fit(X_train, y_train, verbose=False)
         y_prob = model.predict_proba(X_val)[:, 1]
         auc_pr = average_precision_score(y_val, y_prob)
         if auc_pr > best_auc_pr:
             best_auc_pr = auc_pr
-            best_params = params
+            best_params = params.copy()
 
     return best_params, best_auc_pr
 
@@ -171,13 +167,13 @@ def run_lomo_fold(
     final_model.fit(X_full, y_full, verbose=False)
 
     # Evaluate on held-out metro
-    # Use train_pool medians for imputation (no data from held-out metro)
+    # Use train-split medians for imputation (fit on 80% of train_pool; no held-out data)
     X_held = held_df.reindex(columns=feat_cols).fillna(train_medians)
     y_held = held_df[TARGET_COL]
 
     y_prob = final_model.predict_proba(X_held)[:, 1]
     auc_pr  = float(average_precision_score(y_held, y_prob))
-    auc_roc = float(roc_auc_score(y_held, y_prob))
+    auc_roc = float(roc_auc_score(y_held, y_prob)) if len(y_held.unique()) > 1 else float("nan")
 
     # Threshold: F1-optimize on val
     prec, rec, thr = precision_recall_curve(y_val, final_model.predict_proba(X_val)[:, 1])
