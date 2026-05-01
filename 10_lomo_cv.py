@@ -98,3 +98,102 @@ def time_val_split(df: pd.DataFrame, val_frac: float = 0.20) -> Tuple[pd.DataFra
     df_s = df.sort_values("anchor_date")
     n_val = max(1, int(len(df_s) * val_frac))
     return df_s.iloc[:-n_val].copy(), df_s.iloc[-n_val:].copy()
+
+
+def tune_xgb(
+    X_train: pd.DataFrame, y_train: pd.Series,
+    X_val:   pd.DataFrame, y_val:   pd.Series,
+) -> Tuple[dict, float]:
+    """
+    Grid search over PARAM_GRID; select params that maximize val AUC-PR.
+    Imputation medians are already applied to X_train/X_val before this call.
+    """
+    best_auc_pr = -1.0
+    best_params = PARAM_GRID[0]
+
+    for params in PARAM_GRID:
+        model = XGBClassifier(**params)
+        model.fit(
+            X_train, y_train,
+            eval_set=[(X_val, y_val)],
+            verbose=False,
+        )
+        y_prob = model.predict_proba(X_val)[:, 1]
+        auc_pr = average_precision_score(y_val, y_prob)
+        if auc_pr > best_auc_pr:
+            best_auc_pr = auc_pr
+            best_params = params
+
+    return best_params, best_auc_pr
+
+
+def run_lomo_fold(
+    held_out_metro: str,
+    all_dfs: Dict[str, pd.DataFrame],
+) -> dict:
+    """
+    Train on 8 metros, tune hyperparams on a time-based val split within
+    those 8, retrain on full 8-metro pool, evaluate on held-out metro.
+    """
+    print(f"\n  ── Fold: held-out = {held_out_metro} ──")
+
+    # Build train pool from the 8 non-held-out metros
+    train_pool = pd.concat(
+        [df for name, df in all_dfs.items() if name != held_out_metro],
+        ignore_index=True,
+    )
+    held_df = all_dfs[held_out_metro].copy()
+
+    feat_cols = get_feature_cols(train_pool)
+
+    # Time-based 80/20 split within train pool
+    train_df, val_df = time_val_split(train_pool, val_frac=0.20)
+
+    X_train = train_df[feat_cols].copy()
+    y_train = train_df[TARGET_COL]
+    X_val   = val_df[feat_cols].copy()
+    y_val   = val_df[TARGET_COL]
+
+    # Fit imputation medians on train only (anti-leakage rule 3)
+    train_medians = X_train.median()
+    X_train = X_train.fillna(train_medians)
+    X_val   = X_val.fillna(train_medians)
+
+    # Hyperparameter tuning on val
+    print(f"    Tuning XGBoost ({len(PARAM_GRID)} param combos)...")
+    best_params, val_auc_pr = tune_xgb(X_train, y_train, X_val, y_val)
+    print(f"    Best val AUC-PR: {val_auc_pr:.4f}  params: n={best_params['n_estimators']} d={best_params['max_depth']} lr={best_params['learning_rate']}")
+
+    # Retrain on full train pool (train + val) with best params
+    X_full = train_pool[feat_cols].fillna(train_medians)
+    y_full = train_pool[TARGET_COL]
+    final_model = XGBClassifier(**best_params)
+    final_model.fit(X_full, y_full, verbose=False)
+
+    # Evaluate on held-out metro
+    # Use train_pool medians for imputation (no data from held-out metro)
+    X_held = held_df.reindex(columns=feat_cols).fillna(train_medians)
+    y_held = held_df[TARGET_COL]
+
+    y_prob = final_model.predict_proba(X_held)[:, 1]
+    auc_pr  = float(average_precision_score(y_held, y_prob))
+    auc_roc = float(roc_auc_score(y_held, y_prob))
+
+    # Threshold: F1-optimize on val
+    prec, rec, thr = precision_recall_curve(y_val, final_model.predict_proba(X_val)[:, 1])
+    f1s = 2 * prec * rec / (prec + rec + 1e-9)
+    opt_thr = float(thr[np.argmax(f1s[:-1])])
+    f1 = float(f1_score(y_held, (y_prob >= opt_thr).astype(int)))
+
+    result = {
+        "metro":        held_out_metro,
+        "AUC_PR":       round(auc_pr,  4),
+        "AUC_ROC":      round(auc_roc, 4),
+        "F1":           round(f1,      4),
+        "n":            int(len(held_df)),
+        "closure_rate": round(float(y_held.mean()), 4),
+        "val_AUC_PR":   round(val_auc_pr, 4),
+        "best_params":  best_params,
+    }
+    print(f"    Test → AUC-PR={auc_pr:.4f}  AUC-ROC={auc_roc:.4f}  F1={f1:.4f}  n={len(held_df)}")
+    return result
