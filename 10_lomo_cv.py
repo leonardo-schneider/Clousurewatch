@@ -193,3 +193,195 @@ def run_lomo_fold(
     }
     print(f"    Test → AUC-PR={auc_pr:.4f}  AUC-ROC={auc_roc:.4f}  F1={f1:.4f}  n={len(held_df)}")
     return result
+
+
+def train_global_model(
+    all_dfs: Dict[str, pd.DataFrame],
+    best_params: dict,
+) -> Tuple[object, List[str], pd.Series]:
+    """
+    Train XGBoost on all 9 metros concatenated.
+    Returns (model, feat_cols, train_medians).
+    """
+    full_df = pd.concat(all_dfs.values(), ignore_index=True)
+    feat_cols = get_feature_cols(full_df)
+
+    X = full_df[feat_cols].copy()
+    y = full_df[TARGET_COL]
+
+    train_medians = X.median()
+    X = X.fillna(train_medians)
+
+    model = XGBClassifier(**best_params)
+    model.fit(X, y, verbose=False)
+    return model, feat_cols, train_medians
+
+
+def evaluate_edmonton(
+    model,
+    feat_cols: List[str],
+    train_medians: pd.Series,
+) -> dict:
+    """Load Edmonton features.parquet and evaluate the global model."""
+    edm_path = EDMONTON_DIR / "features.parquet"
+    if not edm_path.exists():
+        print(f"  WARNING: Edmonton features not found at {edm_path}. Skipping OOD eval.")
+        return {}
+
+    edm = pd.read_parquet(edm_path)
+    edm["anchor_date"] = pd.to_datetime(edm["anchor_date"])
+
+    X_edm  = edm.reindex(columns=feat_cols).fillna(train_medians)
+    y_edm  = edm[TARGET_COL]
+
+    y_prob  = model.predict_proba(X_edm)[:, 1]
+    auc_pr  = float(average_precision_score(y_edm, y_prob))
+    auc_roc = float(roc_auc_score(y_edm, y_prob)) if len(y_edm.unique()) > 1 else float("nan")
+
+    n_closed = int(y_edm.sum())
+    print(f"\n  === EDMONTON OOD ===")
+    print(f"  n={len(edm):,}  closed={n_closed} ({y_edm.mean():.1%})")
+    print(f"  AUC-PR={auc_pr:.4f}  AUC-ROC={auc_roc:.4f}")
+
+    return {
+        "AUC_PR":       round(auc_pr,  4),
+        "AUC_ROC":      round(auc_roc, 4),
+        "n":            int(len(edm)),
+        "closure_rate": round(float(y_edm.mean()), 4),
+    }
+
+
+def plot_lomo_results(fold_results: List[dict]) -> None:
+    """
+    Grouped horizontal bar chart — one row per metro sorted by AUC-PR descending.
+    Two bars per metro: AUC-PR (blue) and AUC-ROC (green).
+    Tampa single-city reference lines: AUC-PR=0.203, AUC-ROC=0.694.
+    Saved to figures/19_lomo_cv_results.png.
+    """
+    TAMPA_AUC_PR  = 0.203
+    TAMPA_AUC_ROC = 0.694
+
+    df = pd.DataFrame(fold_results).sort_values("AUC_PR", ascending=True)
+    metros = df["metro"].tolist()
+    n = len(metros)
+
+    y = np.arange(n)
+    height = 0.35
+
+    fig, ax = plt.subplots(figsize=(9, max(4, n * 0.7 + 1.5)))
+    bars_pr  = ax.barh(y + height/2, df["AUC_PR"],  height, label="AUC-PR",  color="#2E86AB", alpha=0.85)
+    bars_roc = ax.barh(y - height/2, df["AUC_ROC"], height, label="AUC-ROC", color="#3BB273", alpha=0.85)
+
+    ax.axvline(TAMPA_AUC_PR,  color="#2E86AB", ls="--", lw=1.2, alpha=0.6,
+               label=f"Tampa AUC-PR={TAMPA_AUC_PR:.3f}")
+    ax.axvline(TAMPA_AUC_ROC, color="#3BB273", ls="--", lw=1.2, alpha=0.6,
+               label=f"Tampa AUC-ROC={TAMPA_AUC_ROC:.3f}")
+
+    for bar in bars_pr:
+        ax.text(bar.get_width() + 0.005, bar.get_y() + bar.get_height()/2,
+                f"{bar.get_width():.3f}", va="center", fontsize=8)
+    for bar in bars_roc:
+        v = bar.get_width()
+        label = f"{v:.3f}" if not np.isnan(v) else "n/a"
+        ax.text(v + 0.005 if not np.isnan(v) else 0.005,
+                bar.get_y() + bar.get_height()/2,
+                label, va="center", fontsize=8)
+
+    ax.set_yticks(y)
+    ax.set_yticklabels([m.replace("_", " ").title() for m in metros], fontsize=10)
+    ax.set_xlabel("Score", fontsize=11)
+    ax.set_xlim(0, 1.05)
+    ax.legend(fontsize=9, loc="lower right")
+    ax.set_title("LOMO CV — Generalization Across 9 US Metros", fontweight="bold", fontsize=12)
+    plt.tight_layout()
+
+    out = FIG_DIR / "19_lomo_cv_results.png"
+    plt.savefig(out, bbox_inches="tight")
+    plt.close()
+    print(f"  Saved -> {out}")
+
+
+def main():
+    print("=" * 60)
+    print("STEP 10 -- Leave-One-Metro-Out CV + Global Model")
+    print("=" * 60)
+
+    # ── 1. Load all metros ──────────────────────────────────────────────────
+    print("\n[1] Loading metro features")
+    all_dfs = load_all_metros()
+    total = sum(len(df) for df in all_dfs.values())
+    print(f"  Total: {total:,} restaurants across {len(all_dfs)} metros")
+
+    # ── 2. LOMO CV (9 folds) ────────────────────────────────────────────────
+    print("\n[2] LOMO CV (9 folds)")
+    fold_results = []
+    for metro in METROS:
+        result = run_lomo_fold(metro, all_dfs)
+        fold_results.append(result)
+
+    # ── 3. Aggregate metrics ────────────────────────────────────────────────
+    auc_prs  = [r["AUC_PR"]  for r in fold_results]
+    auc_rocs = [r["AUC_ROC"] for r in fold_results if not np.isnan(r["AUC_ROC"])]
+    aggregate = {
+        "mean_AUC_PR":  round(float(np.mean(auc_prs)),  4),
+        "std_AUC_PR":   round(float(np.std(auc_prs)),   4),
+        "mean_AUC_ROC": round(float(np.mean(auc_rocs)), 4),
+        "std_AUC_ROC":  round(float(np.std(auc_rocs)),  4),
+    }
+    print(f"\n  Aggregate: AUC-PR={aggregate['mean_AUC_PR']:.4f}±{aggregate['std_AUC_PR']:.4f}  "
+          f"AUC-ROC={aggregate['mean_AUC_ROC']:.4f}±{aggregate['std_AUC_ROC']:.4f}")
+
+    # ── 4. Global model — use best fold's hyperparams ───────────────────────
+    print("\n[3] Training global model on all 9 metros")
+    best_fold = max(fold_results, key=lambda r: r["val_AUC_PR"])
+    print(f"  Using hyperparams from best fold: {best_fold['metro']} (val AUC-PR={best_fold['val_AUC_PR']:.4f})")
+    global_params = best_fold["best_params"]
+
+    global_model, feat_cols, train_medians = train_global_model(all_dfs, global_params)
+    joblib.dump(global_model, MODEL_DIR / "xgboost_global.pkl")
+    print(f"  Global model saved -> {MODEL_DIR}/xgboost_global.pkl")
+
+    # ── 5. Edmonton OOD evaluation ──────────────────────────────────────────
+    print("\n[4] Edmonton OOD evaluation")
+    edmonton_results = evaluate_edmonton(global_model, feat_cols, train_medians)
+
+    # ── 6. Save results JSON ────────────────────────────────────────────────
+    results = {
+        "folds": [
+            {k: v for k, v in r.items() if k not in ("best_params", "val_AUC_PR")}
+            for r in fold_results
+        ],
+        "aggregate": aggregate,
+        "global_model": {
+            "train_metros": len(METROS),
+            "test_metro":   "edmonton",
+            **edmonton_results,
+        },
+    }
+    out_json = MODEL_DIR / "lomo_results.json"
+    with open(out_json, "w") as f:
+        json.dump(results, f, indent=2)
+    print(f"\n  Results saved -> {out_json}")
+
+    # ── 7. Figure ───────────────────────────────────────────────────────────
+    print("\n[5] Generating figure")
+    plot_lomo_results(fold_results)
+
+    # ── 8. Print summary table ──────────────────────────────────────────────
+    print("\n  === LOMO CV SUMMARY ===")
+    print(f"  {'Metro':15s} {'AUC-PR':>8} {'AUC-ROC':>8} {'F1':>7} {'N':>6} {'Rate':>6}")
+    print("  " + "-" * 58)
+    for r in sorted(fold_results, key=lambda x: x["AUC_PR"], reverse=True):
+        roc_str = f"{r['AUC_ROC']:8.4f}" if not np.isnan(r["AUC_ROC"]) else "     n/a"
+        print(f"  {r['metro']:15s} {r['AUC_PR']:8.4f} {roc_str} "
+              f"{r['F1']:7.4f} {r['n']:6,} {r['closure_rate']:6.1%}")
+    print("  " + "-" * 58)
+    print(f"  {'MEAN':15s} {aggregate['mean_AUC_PR']:8.4f} {aggregate['mean_AUC_ROC']:8.4f}")
+
+    if edmonton_results:
+        print(f"\n  Edmonton OOD: AUC-PR={edmonton_results['AUC_PR']:.4f}  "
+              f"AUC-ROC={edmonton_results.get('AUC_ROC', float('nan')):.4f}")
+
+
+if __name__ == "__main__":
+    main()
