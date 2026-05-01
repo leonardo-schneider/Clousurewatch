@@ -142,3 +142,58 @@ def load_interactions(bids: set) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFra
 
     print(f"    reviews={len(reviews):,}  checkins={len(checkins):,}  tips={len(tips):,}")
     return reviews, checkins, tips
+
+
+def build_labels(biz: pd.DataFrame, reviews: pd.DataFrame) -> pd.DataFrame:
+    """
+    3-way review-recency rule (mirrors 02_build_labels.py build_label()).
+    Completely ignores is_open flag — labels from review behaviour only.
+
+    Rules:
+      - last_review > outcome_end + 3 months  → label 0 (restaurant still active)
+      - last_review <= outcome_end            → label 1 (closed)
+      - everything else (ambiguous window)    → label 0
+    """
+    earliest = pd.Timestamp(EARLIEST_ANCHOR)
+    latest   = pd.Timestamp(LATEST_ANCHOR)
+
+    rev_groups = reviews.groupby("business_id")
+    rows = []
+    for _, b in biz.iterrows():
+        bid = b["business_id"]
+        if bid not in rev_groups.groups:
+            continue
+        rev = rev_groups.get_group(bid).sort_values("date")
+        if rev.empty:
+            continue
+
+        anchor = rev["date"].quantile(0.80, interpolation="nearest")
+        if not (earliest <= anchor <= latest):
+            continue
+
+        obs_start   = anchor - relativedelta(months=OBS_MONTHS)
+        outcome_end = anchor + relativedelta(months=OUTCOME_MONTHS)
+        last_review  = rev["date"].max()
+
+        if last_review > outcome_end + relativedelta(months=3):
+            closed = 0
+        elif last_review <= outcome_end:
+            closed = 1
+        else:
+            closed = 0   # ambiguous window
+
+        rows.append({
+            "business_id":        bid,
+            "name":               b["name"],
+            "city":               b["city"],
+            "state":              b["state"],
+            "anchor_date":        anchor,
+            "obs_start":          obs_start,
+            "outcome_end":        outcome_end,
+            TARGET_COL:           closed,
+            "stars_yelp":         b["stars_yelp"],
+            "price_range":        b["price_range"],
+            "open_days_per_week": b["open_days_per_week"],
+            "categories":         b["categories"],
+        })
+    return pd.DataFrame(rows)
