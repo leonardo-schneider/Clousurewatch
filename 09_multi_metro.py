@@ -223,17 +223,17 @@ def build_features(
         obs_s  = row["obs_start"]
 
         obs_rev = pd.DataFrame()
-        if rev_groups and bid in rev_groups.groups:
+        if rev_groups is not None and bid in rev_groups.groups:
             obs_rev = rev_groups.get_group(bid)
             obs_rev = obs_rev[(obs_rev["date"] >= obs_s) & (obs_rev["date"] < anchor)]
 
         obs_ci = pd.DataFrame()
-        if ci_groups and bid in ci_groups.groups:
+        if ci_groups is not None and bid in ci_groups.groups:
             obs_ci = ci_groups.get_group(bid)
             obs_ci = obs_ci[(obs_ci["checkin_date"] >= obs_s) & (obs_ci["checkin_date"] < anchor)]
 
         obs_tip = pd.DataFrame()
-        if tip_groups and bid in tip_groups.groups:
+        if tip_groups is not None and bid in tip_groups.groups:
             obs_tip = tip_groups.get_group(bid)
             obs_tip = obs_tip[(obs_tip["date"] >= obs_s) & (obs_tip["date"] < anchor)]
 
