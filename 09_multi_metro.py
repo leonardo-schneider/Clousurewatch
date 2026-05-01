@@ -246,3 +246,121 @@ def build_features(
         records.append(feat)
 
     return pd.DataFrame(records)
+
+
+def backfill_has_photo(photo_bids: set) -> None:
+    """Add has_photo to Tampa and Philadelphia features.parquet (built before this script existed)."""
+    targets = [
+        Path("data/processed/features.parquet"),
+        Path("data/processed_philly/features.parquet"),
+    ]
+    for p in targets:
+        if not p.exists():
+            print(f"  WARNING: {p} not found, skipping")
+            continue
+        df = pd.read_parquet(p)
+        df["has_photo"] = df["business_id"].isin(photo_bids).astype(int)
+        df.to_parquet(p, index=False)
+        pct = df["has_photo"].mean() * 100
+        print(f"  Backfilled has_photo -> {p}  ({df['has_photo'].sum():,}/{len(df):,} = {pct:.1f}%)")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Multi-metro restaurant pipeline")
+    parser.add_argument("--city",          type=str, default=None)
+    parser.add_argument("--state",         type=str, default=None)
+    parser.add_argument("--backfill-only", action="store_true",
+                        help="Only add has_photo to Tampa + Philly features.parquet")
+    args = parser.parse_args()
+
+    # Load photo index once (used in both paths)
+    if not PHOTO_INDEX.exists():
+        raise FileNotFoundError(f"Photo index not found: {PHOTO_INDEX}")
+    photo_bids = set(pd.read_parquet(PHOTO_INDEX)["business_id"])
+    print(f"  Photo index: {len(photo_bids):,} businesses")
+
+    if args.backfill_only:
+        print("=" * 60)
+        print("STEP 9 -- Backfilling has_photo into Tampa + Philadelphia")
+        print("=" * 60)
+        backfill_has_photo(photo_bids)
+        return
+
+    if not args.city or not args.state:
+        parser.error("--city and --state are required (or use --backfill-only)")
+
+    city  = args.city
+    state = args.state
+    slug  = city_slug(city)
+    odir  = out_dir(city)
+
+    print("=" * 60)
+    print(f"STEP 9 -- {city}, {state}")
+    print("=" * 60)
+
+    # ── 1. Businesses (checkpoint) ──────────────────────────────────────────
+    biz_path = odir / "businesses.parquet"
+    if biz_path.exists():
+        print("  Loading businesses from checkpoint...")
+        biz = pd.read_parquet(biz_path)
+        print(f"    {len(biz):,} rows")
+    else:
+        print("  Loading businesses from JSON...")
+        biz = load_businesses(city, state)
+        biz.to_parquet(biz_path, index=False)
+
+    if biz.empty:
+        print("  ERROR: No businesses found. Check city/state spelling.")
+        return
+
+    # ── 2. Reviews, checkins, tips (checkpoint) ─────────────────────────────
+    rev_path = odir / "reviews.parquet"
+    if rev_path.exists():
+        print("  Loading interactions from checkpoint...")
+        reviews  = pd.read_parquet(odir / "reviews.parquet")
+        checkins = pd.read_parquet(odir / "checkins.parquet")
+        tips     = pd.read_parquet(odir / "tips.parquet")
+        print(f"    reviews={len(reviews):,}  checkins={len(checkins):,}  tips={len(tips):,}")
+    else:
+        bids = set(biz["business_id"])
+        reviews, checkins, tips = load_interactions(bids)
+        reviews.to_parquet(odir / "reviews.parquet",   index=False)
+        checkins.to_parquet(odir / "checkins.parquet", index=False)
+        tips.to_parquet(odir / "tips.parquet",         index=False)
+
+    # ── 3. Labeling (checkpoint) ────────────────────────────────────────────
+    lab_path = odir / "labeled_businesses.parquet"
+    if lab_path.exists():
+        print("  Loading labels from checkpoint...")
+        labeled = pd.read_parquet(lab_path)
+    else:
+        print("  Building labels...")
+        labeled = build_labels(biz, reviews)
+        labeled.to_parquet(lab_path, index=False)
+
+    n_closed = int(labeled[TARGET_COL].sum())
+    rate = n_closed / len(labeled) if len(labeled) > 0 else 0
+    print(f"  Labeled: {len(labeled):,} restaurants, {n_closed} closed ({rate:.1%})")
+
+    if len(labeled) < MIN_LABELED:
+        print(f"  WARNING: Only {len(labeled)} labeled restaurants (< {MIN_LABELED}). Exiting.")
+        return
+
+    # ── 4. Feature engineering (always re-run to ensure has_photo is present) ─
+    print("  Engineering features (VADER is slow, ~20-40 min)...")
+    features = build_features(labeled, reviews, checkins, tips, photo_bids)
+    features.to_parquet(odir / "features.parquet", index=False)
+    print(f"  Features shape: {features.shape}")
+    print(f"  has_photo coverage: {features['has_photo'].mean():.1%}")
+
+    # ── 5. Summary ──────────────────────────────────────────────────────────
+    print("\n  === SUMMARY ===")
+    print(f"  City:          {city}, {state}")
+    print(f"  Labeled:       {len(labeled):,}")
+    print(f"  Closed:        {n_closed} ({rate:.1%})")
+    print(f"  Features:      {features.shape[1]} cols")
+    print(f"  Saved to:      {odir}/")
+
+
+if __name__ == "__main__":
+    main()
