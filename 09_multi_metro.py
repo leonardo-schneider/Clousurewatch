@@ -197,3 +197,52 @@ def build_labels(biz: pd.DataFrame, reviews: pd.DataFrame) -> pd.DataFrame:
             "categories":         b["categories"],
         })
     return pd.DataFrame(rows)
+
+
+def build_features(
+    labeled: pd.DataFrame,
+    reviews: pd.DataFrame,
+    checkins: pd.DataFrame,
+    tips: pd.DataFrame,
+    photo_bids: set,
+) -> pd.DataFrame:
+    """
+    Call build_features_one from 03_feature_engineering per restaurant.
+    Adds has_photo as a static binary column (no temporal filter — see CLAUDE.md).
+    """
+    build_one = _fe.build_features_one
+
+    rev_groups = reviews.groupby("business_id") if not reviews.empty else None
+    ci_groups  = checkins.groupby("business_id") if not checkins.empty else None
+    tip_groups = tips.groupby("business_id")     if not tips.empty     else None
+
+    records = []
+    for _, row in tqdm(labeled.iterrows(), total=len(labeled), desc="Features"):
+        bid    = row["business_id"]
+        anchor = row["anchor_date"]
+        obs_s  = row["obs_start"]
+
+        obs_rev = pd.DataFrame()
+        if rev_groups and bid in rev_groups.groups:
+            obs_rev = rev_groups.get_group(bid)
+            obs_rev = obs_rev[(obs_rev["date"] >= obs_s) & (obs_rev["date"] < anchor)]
+
+        obs_ci = pd.DataFrame()
+        if ci_groups and bid in ci_groups.groups:
+            obs_ci = ci_groups.get_group(bid)
+            obs_ci = obs_ci[(obs_ci["checkin_date"] >= obs_s) & (obs_ci["checkin_date"] < anchor)]
+
+        obs_tip = pd.DataFrame()
+        if tip_groups and bid in tip_groups.groups:
+            obs_tip = tip_groups.get_group(bid)
+            obs_tip = obs_tip[(obs_tip["date"] >= obs_s) & (obs_tip["date"] < anchor)]
+
+        feat = build_one(row, obs_rev, obs_ci, obs_tip)
+        feat[TARGET_COL]    = row[TARGET_COL]
+        feat["anchor_date"] = anchor
+        feat["city"]        = row["city"]
+        feat["state"]       = row["state"]
+        feat["has_photo"]   = int(bid in photo_bids)
+        records.append(feat)
+
+    return pd.DataFrame(records)
