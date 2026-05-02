@@ -16,7 +16,6 @@ import streamlit as st
 from app_helpers import (
     risk_color,
     risk_label,
-    risk_badge,
     percentile_rank,
     outcome_banner_html,
     compute_shap_row,
@@ -384,7 +383,7 @@ METRO_CONFIG = {
 
 _SCORE_META = {
     "business_id", "closed_within_6m", "anchor_date",
-    "city", "state", "metro", "name",
+    "city", "state", "metro", "name", "latitude", "longitude",
 }
 
 
@@ -403,15 +402,24 @@ def load_xgb_model():
 
 @st.cache_data
 def load_metro_features(data_dir: str) -> pd.DataFrame | None:
-    """Load features.parquet and join restaurant names from labeled_businesses."""
+    """Load features.parquet and join name + lat/lon from labeled_businesses / businesses."""
     feat_path = Path(data_dir) / "features.parquet"
     if not feat_path.exists():
         return None
     df = pd.read_parquet(feat_path)
+
+    # Names from labeled_businesses
     lab_path = Path(data_dir) / "labeled_businesses.parquet"
     if lab_path.exists():
         lab = pd.read_parquet(lab_path)[["business_id", "name"]]
         df = df.merge(lab, on="business_id", how="left")
+
+    # Lat/lon from businesses.parquet (present in all metros, zero nulls)
+    biz_path = Path(data_dir) / "businesses.parquet"
+    if biz_path.exists():
+        biz = pd.read_parquet(biz_path)[["business_id", "latitude", "longitude"]]
+        df = df.merge(biz, on="business_id", how="left")
+
     return df
 
 
@@ -499,7 +507,7 @@ FEAT_LABELS = {
 def restaurant_card_html(row, photo_index, city_label: str, selected=False):
     bid      = row["business_id"]
     risk_pct = row["risk_pct"]
-    tier, css_class, hex_color = risk_tier(risk_pct)
+    tier, _, hex_color = risk_tier(risk_pct)
 
     photo_html = ""
     if bid in photo_index.index:
@@ -984,6 +992,58 @@ with dist_col:
                    title=dict(text="Count", font=dict(size=10, color="#535353"))),
     )
     st.plotly_chart(fig_dist, use_container_width=True, config={"displayModeBar": False})
+
+# ── Location map ──────────────────────────────────────────────────────────────
+
+sel_lat = selected.get("latitude")
+sel_lon = selected.get("longitude")
+
+if pd.notna(sel_lat) and pd.notna(sel_lon):
+    st.markdown('<div class="section-label" style="margin-top:1rem">Location</div>',
+                unsafe_allow_html=True)
+
+    # All metro restaurants — semi-transparent dots colored by risk
+    map_df = df.dropna(subset=["latitude", "longitude"])
+    dot_colors = map_df["risk_pct"].apply(
+        lambda p: "#E24B4A" if p >= 60 else ("#EF9F27" if p >= 30 else "#1DB954")
+    )
+
+    fig_map = go.Figure()
+    fig_map.add_trace(go.Scattermapbox(
+        lat=map_df["latitude"],
+        lon=map_df["longitude"],
+        mode="markers",
+        marker=dict(size=6, color=dot_colors.tolist(), opacity=0.45),
+        text=map_df["name"] + "<br>" + map_df["risk_pct"].apply(lambda p: f"{p:.0f}% risk"),
+        hovertemplate="%{text}<extra></extra>",
+        name="",
+    ))
+
+    # Selected restaurant — larger marker + label
+    fig_map.add_trace(go.Scattermapbox(
+        lat=[sel_lat],
+        lon=[sel_lon],
+        mode="markers+text",
+        marker=dict(size=16, color=dot_color),
+        text=[selected["name"]],
+        textposition="top right",
+        textfont=dict(size=11, color="#ffffff", family="Montserrat"),
+        hovertemplate=f"{selected['name']}<br>{selected['risk_pct']:.0f}% risk<extra></extra>",
+        name="",
+    ))
+
+    fig_map.update_layout(
+        mapbox=dict(
+            style="carto-darkmatter",
+            center=dict(lat=sel_lat, lon=sel_lon),
+            zoom=13,
+        ),
+        margin=dict(l=0, r=0, t=0, b=0),
+        height=320,
+        paper_bgcolor="rgba(0,0,0,0)",
+        showlegend=False,
+    )
+    st.plotly_chart(fig_map, use_container_width=True, config={"displayModeBar": False})
 
 st.markdown(f"""
 <div style="margin-top:2rem;padding-top:1rem;border-top:1px solid #282828;
