@@ -464,6 +464,185 @@ def plot_top5_feature_profiles(all_df: pd.DataFrame):
     save("24_top5_feature_profiles.png")
 
 
+# ── Figure 25: Confusion matrices ────────────────────────────────────────────
+
+def _opt_threshold(y_true, y_prob):
+    """F1-optimal threshold."""
+    prec, rec, thr = precision_recall_curve(y_true, y_prob)
+    f1s = 2 * prec * rec / (prec + rec + 1e-9)
+    return float(thr[np.argmax(f1s[:-1])])
+
+
+def plot_confusion_matrices(y_test, xgb_prob, lr_prob):
+    from sklearn.metrics import confusion_matrix, classification_report
+    print("[25] Confusion matrices...")
+
+    thr_xgb = _opt_threshold(y_test, xgb_prob)
+    thr_lr  = _opt_threshold(y_test, lr_prob)
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+
+    for ax, prob, thr, label, color in [
+        (axes[0], xgb_prob, thr_xgb, "XGBoost",             C_XGB),
+        (axes[1], lr_prob,  thr_lr,  "Logistic Regression",  C_LR),
+    ]:
+        y_pred = (prob >= thr).astype(int)
+        cm     = confusion_matrix(y_test, y_pred)
+        tn, fp, fn, tp = cm.ravel()
+        n = len(y_test)
+
+        # Heatmap — row = actual, col = predicted
+        im = ax.imshow(cm, cmap="Blues", aspect="auto")
+
+        labels_rc = [["TN", "FP"], ["FN", "TP"]]
+        for r in range(2):
+            for c in range(2):
+                val  = cm[r, c]
+                pct  = val / n * 100
+                tag  = labels_rc[r][c]
+                dark = val > cm.max() / 2
+                ax.text(c, r,
+                        f"{tag}\n{val:,}\n({pct:.1f}%)",
+                        ha="center", va="center", fontsize=12,
+                        color="white" if dark else "#222",
+                        fontweight="bold")
+
+        ax.set_xticks([0, 1]); ax.set_yticks([0, 1])
+        ax.set_xticklabels(["Predicted\nOpen", "Predicted\nClosed"], fontsize=10)
+        ax.set_yticklabels(["Actual\nOpen", "Actual\nClosed"], fontsize=10)
+
+        prec = tp / (tp + fp + 1e-9)
+        rec  = tp / (tp + fn + 1e-9)
+        f1   = 2 * prec * rec / (prec + rec + 1e-9)
+        ap   = average_precision_score(y_test, prob)
+        ax.set_title(
+            f"{label}\n"
+            f"threshold={thr:.2f}  |  Precision={prec:.2f}  Recall={rec:.2f}  F1={f1:.2f}  AUC-PR={ap:.3f}",
+            fontweight="bold", fontsize=10,
+        )
+
+    plt.suptitle("Confusion Matrices at F1-Optimal Threshold — Time-Split Test Set",
+                 fontsize=12, fontweight="bold")
+    plt.tight_layout()
+    save("25_confusion_matrices.png")
+
+
+# ── Figure 26: Standalone ROC-AUC curve ──────────────────────────────────────
+
+def plot_roc_standalone(y_test, xgb_prob, lr_prob):
+    from sklearn.metrics import roc_curve, roc_auc_score
+    print("[26] Standalone ROC-AUC curve...")
+
+    fig, ax = plt.subplots(figsize=(7, 6))
+
+    for label, prob, color in [
+        ("XGBoost",             xgb_prob, C_XGB),
+        ("Logistic Regression", lr_prob,  C_LR),
+    ]:
+        fpr, tpr, thr = roc_curve(y_test, prob)
+        auc = roc_auc_score(y_test, prob)
+        ax.plot(fpr, tpr, color=color, linewidth=2.5,
+                label=f"{label}  (AUC = {auc:.3f})")
+
+        # Mark the point closest to (0,1)
+        dist      = np.sqrt(fpr**2 + (1 - tpr)**2)
+        best_idx  = np.argmin(dist)
+        ax.scatter(fpr[best_idx], tpr[best_idx], color=color, s=90, zorder=5)
+        ax.annotate(
+            f"t={thr[best_idx]:.2f}",
+            xy=(fpr[best_idx], tpr[best_idx]),
+            xytext=(fpr[best_idx] + 0.05, tpr[best_idx] - 0.06),
+            fontsize=8.5, color=color,
+            arrowprops=dict(arrowstyle="->", color=color, lw=0.9),
+        )
+
+    ax.plot([0, 1], [0, 1], color=C_BASE, linestyle="--",
+            linewidth=1.2, label="Random baseline (AUC = 0.500)")
+    ax.fill_between([0, 1], [0, 1], alpha=0.04, color=C_BASE)
+
+    ax.set_xlabel("False Positive Rate  (1 − Specificity)", fontsize=11)
+    ax.set_ylabel("True Positive Rate  (Sensitivity / Recall)", fontsize=11)
+    ax.set_title("ROC-AUC Curve — Global Models on Time-Split Test Set",
+                 fontweight="bold", fontsize=12)
+    ax.legend(fontsize=10, loc="lower right")
+    ax.set_xlim(0, 1); ax.set_ylim(0, 1)
+
+    n_pos = int(y_test.sum())
+    ax.text(0.98, 0.08,
+            f"n={len(y_test):,}  |  {n_pos} closures ({y_test.mean():.1%})",
+            transform=ax.transAxes, ha="right", fontsize=9, color="#888")
+    plt.tight_layout()
+    save("26_roc_auc_curve.png")
+
+
+# ── Figure 27: FP / FN error profile ─────────────────────────────────────────
+
+def plot_fp_fn_profile(test_df, xgb_prob, feat_cols):
+    print("[27] FP/FN error profile...")
+
+    thr    = _opt_threshold(test_df[TARGET_COL].values, xgb_prob)
+    y_true = test_df[TARGET_COL].values
+    y_pred = (xgb_prob >= thr).astype(int)
+
+    mask_tp = (y_pred == 1) & (y_true == 1)
+    mask_fp = (y_pred == 1) & (y_true == 0)
+    mask_fn = (y_pred == 0) & (y_true == 1)
+
+    tp_df = test_df[mask_tp]
+    fp_df = test_df[mask_fp]
+    fn_df = test_df[mask_fn]
+    print(f"  TP={len(tp_df)}  FP={len(fp_df)}  FN={len(fn_df)}")
+
+    # Top 10 features by XGB importance (from feat_cols, not booster names)
+    import joblib
+    xgb_saved = joblib.load(MODEL_DIR / "xgboost_global.pkl")
+    imp_map   = dict(zip(xgb_saved.get_booster().feature_names,
+                         xgb_saved.feature_importances_))
+    top10 = sorted(
+        [c for c in feat_cols if c in imp_map],
+        key=lambda c: imp_map[c], reverse=True,
+    )[:10]
+
+    groups = {
+        "True Pos — caught closures":    tp_df,
+        "False Pos — false alarms":      fp_df,
+        "False Neg — missed closures":   fn_df,
+    }
+    colors = {
+        "True Pos — caught closures":   "#1DB954",
+        "False Pos — false alarms":     "#EF9F27",
+        "False Neg — missed closures":  "#E84855",
+    }
+
+    means = pd.DataFrame({
+        name: grp[top10].mean() for name, grp in groups.items()
+    })
+    std_all = test_df[top10].std().replace(0, 1)
+    means_z = means.div(std_all, axis=0)
+
+    x     = np.arange(len(top10))
+    width = 0.26
+    fig, ax = plt.subplots(figsize=(14, 5))
+
+    for k, (name, color) in enumerate(colors.items()):
+        ax.bar(x + (k - 1) * width, means_z[name], width,
+               label=f"{name}  (n={len(groups[name])})",
+               color=color, alpha=0.82)
+
+    ax.set_xticks(x)
+    ax.set_xticklabels([c.replace("_", "\n") for c in top10], fontsize=8)
+    ax.set_ylabel("Mean feature value (z-score vs test set)", fontsize=10)
+    ax.axhline(0, color="#555", linewidth=0.8, linestyle="--")
+    ax.legend(fontsize=9)
+    ax.set_title(
+        f"Error Profile — What Distinguishes Caught vs Missed Closures?\n"
+        f"XGBoost at threshold={thr:.2f}  |  top 10 features by importance",
+        fontweight="bold",
+    )
+    plt.tight_layout()
+    save("27_fp_fn_error_profile.png")
+
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 def main():
@@ -503,11 +682,22 @@ def main():
     ])
     lr_pipe.fit(X_train, y_train)
 
-    # Figs 21-24
+    # Compute test-set probabilities once, reused by figs 21-27
+    xgb_feat = xgb_model.get_booster().feature_names
+    X_test_xgb = test_df.reindex(columns=xgb_feat).fillna(medians)
+    X_test_lr  = test_df[feat_cols].fillna(medians)
+    y_test     = test_df[TARGET_COL].values
+    xgb_prob   = xgb_model.predict_proba(X_test_xgb)[:, 1]
+    lr_prob    = lr_pipe.predict_proba(X_test_lr)[:, 1]
+
+    # Figs 21-27
     plot_pr_roc(train_df, test_df, feat_cols, xgb_model, lr_pipe)
     plot_shap_beeswarm(test_df, xgb_model)
     plot_feature_importance(xgb_model, lr_pipe, feat_cols)
     plot_top5_feature_profiles(all_df)
+    plot_confusion_matrices(y_test, xgb_prob, lr_prob)
+    plot_roc_standalone(y_test, xgb_prob, lr_prob)
+    plot_fp_fn_profile(test_df, xgb_prob, feat_cols)
 
     print("\nDone.")
 
