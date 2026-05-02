@@ -79,7 +79,8 @@ def compute_shap_row(model, feature_matrix: "pd.DataFrame", business_id: str):
     if model is None or feature_matrix is None:
         return None, None
 
-    _META = {"business_id", "closed_within_6m", "anchor_date", "city", "state"}
+    _META = {"business_id", "closed_within_6m", "anchor_date", "city", "state",
+             "metro", "name", "risk_score", "risk_pct"}
     feat_cols = [c for c in feature_matrix.columns if c not in _META]
 
     feature_matrix = feature_matrix.copy()

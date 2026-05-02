@@ -1,5 +1,5 @@
 """
-ClosureWatch - Tampa Bay Restaurant Failure Prediction
+ClosureWatch - Multi-Metro Restaurant Failure Prediction
 Spotify-inspired dark dashboard: deep black, #1DB954 green accent,
 bold condensed type, album-art energy applied to risk data.
 """
@@ -24,7 +24,7 @@ from app_helpers import (
 
 # Page config must be first Streamlit command.
 st.set_page_config(
-    page_title="ClosureWatch · Tampa Bay",
+    page_title="ClosureWatch · Restaurant Risk",
     page_icon="📡",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -367,118 +367,108 @@ div[data-testid="stRadio"] label:nth-child(4) span { color: #1db954; }
 st.markdown(SPOTIFY_CSS, unsafe_allow_html=True)
 
 
-@st.cache_data
-def load_data() -> pd.DataFrame:
-    """Load ensemble predictions parquet. Falls back to synthetic demo data."""
-    path = Path("data/processed/ensemble_predictions.parquet")
-    if path.exists():
-        df = pd.read_parquet(path)
-        rename = {}
-        for col in df.columns:
-            low = col.lower()
-            if "name" in low:
-                rename[col] = "name"
-            if "risk" in low or "prob" in low or "score" in low:
-                rename[col] = "risk_score"
-            if "stars" in low or "rating" in low:
-                rename[col] = "stars"
-        df = df.rename(columns=rename)
-        if "risk_score" not in df.columns:
-            num = df.select_dtypes("number").columns
-            if len(num):
-                df["risk_score"] = df[num[0]]
-        if "name" not in df.columns:
-            obj = df.select_dtypes("object").columns
-            if len(obj):
-                df["name"] = df[obj[0]]
-        df["risk_pct"] = (df["risk_score"] * 100).round(1)
-    else:
-        rng = np.random.default_rng(42)
-        names = [
-            "Woody's Liquor & Fine Wine", "Winn-Dixie Deli", "Dunkin'",
-            "Top China", "Stacie's Cottage Cafe", "Chicago Deli & Coney Dogs",
-            "Walgreens Bistro", "Baskin-Robbins", "Taco Bell (Dale Mabry)",
-            "Taco Bell (Fowler)", "China Wok", "Spartan Manor",
-            "Unks Bar B Que", "Slizzy Mcgee's", "ABC Fine Wine Spirits",
-            "Beef 'O' Brady's", "Denny's Ybor", "IHOP Brandon",
-            "Checkers", "Golden Wok", "Sushi Time", "La Teresita",
-            "El Cap", "Mel's Hot Dogs", "Bern's Steak House",
-            "The Columbia Restaurant", "Oxford Exchange", "Ulele",
-            "Daily Eats", "Ciccio's",
-        ]
-        risk = sorted(rng.beta(2, 5, size=len(names)) * 0.85 + 0.10, reverse=True)
-        stars = rng.uniform(1.0, 4.5, size=len(names)).round(1)
-        months_zero = rng.integers(0, 6, size=len(names))
-        days_last = rng.integers(10, 210, size=len(names))
-        review_drought = (days_last > 90).astype(int)
-        checkin_drought = rng.integers(0, 2, size=len(names))
-        pct_5star = rng.uniform(0, 0.6, size=len(names)).round(2)
-        feat_names = [
-            "months_with_zero_reviews", "days_since_last_review",
-            "review_drought_flag", "checkin_drought_flag",
-            "pct_5star", "review_velocity_trend", "checkin_velocity",
-            "avg_sentiment_score", "review_count_12m",
-        ]
-        feat_matrix = rng.uniform(-1, 1, size=(len(names), len(feat_names)))
-        for i, r in enumerate(risk):
-            feat_matrix[i] += (r - 0.5) * 0.5
+# ── Metro config ─────────────────────────────────────────────────────────────
 
-        df = pd.DataFrame({
-            "name": names,
-            "risk_score": risk,
-            "risk_pct": [round(r * 100, 1) for r in risk],
-            "stars": stars,
-            "months_with_zero_reviews": months_zero,
-            "days_since_last_review": days_last,
-            "review_drought_flag": review_drought,
-            "checkin_drought_flag": checkin_drought,
-            "pct_5star": pct_5star,
-        })
-        for j, fn in enumerate(feat_names):
-            df[f"feat_{fn}"] = feat_matrix[:, j].clip(-1, 1)
+METRO_CONFIG = {
+    "Tampa, FL":        ("data/processed",               "Tampa Bay"),
+    "Philadelphia, PA": ("data/processed_philly",        "Philadelphia"),
+    "Indianapolis, IN": ("data/processed_indianapolis",  "Indianapolis"),
+    "Tucson, AZ":       ("data/processed_tucson",        "Tucson"),
+    "Nashville, TN":    ("data/processed_nashville",     "Nashville"),
+    "New Orleans, LA":  ("data/processed_new_orleans",   "New Orleans"),
+    "Saint Louis, MO":  ("data/processed_saint_louis",   "Saint Louis"),
+    "Reno, NV":         ("data/processed_reno",          "Reno"),
+    "Boise, ID":        ("data/processed_boise",         "Boise"),
+    "Edmonton, AB":     ("data/processed_edmonton",      "Edmonton (OOD)"),
+}
 
-    return df.sort_values("risk_pct", ascending=False).reset_index(drop=True)
+_SCORE_META = {
+    "business_id", "closed_within_6m", "anchor_date",
+    "city", "state", "metro", "name",
+}
 
+
+# ── Data loading (cached) ─────────────────────────────────────────────────────
 
 @st.cache_resource
 def load_xgb_model():
     import joblib
-    path = Path("models/xgboost.pkl")
-    if path.exists():
-        return joblib.load(path)
+    # Prefer global 9-metro model; fall back to Tampa-only
+    for path in ["models/xgboost_global.pkl", "models/xgboost.pkl"]:
+        p = Path(path)
+        if p.exists():
+            return joblib.load(p)
     return None
 
 
 @st.cache_data
-def load_feature_matrix() -> pd.DataFrame | None:
-    path = Path("data/processed/features.parquet")
-    if path.exists():
-        return pd.read_parquet(path)
-    return None
+def load_metro_features(data_dir: str) -> pd.DataFrame | None:
+    """Load features.parquet and join restaurant names from labeled_businesses."""
+    feat_path = Path(data_dir) / "features.parquet"
+    if not feat_path.exists():
+        return None
+    df = pd.read_parquet(feat_path)
+    lab_path = Path(data_dir) / "labeled_businesses.parquet"
+    if lab_path.exists():
+        lab = pd.read_parquet(lab_path)[["business_id", "name"]]
+        df = df.merge(lab, on="business_id", how="left")
+    return df
 
 
 @st.cache_data
 def load_photo_index():
+    # Photos indexed for Tampa only; other metros show placeholder cards.
     path = Path("data/processed/photo_index.parquet")
     if path.exists():
         return pd.read_parquet(path).set_index("business_id")
     return pd.DataFrame()
 
 
-df = load_data()
-_xgb_model = load_xgb_model()
-_feat_matrix = load_feature_matrix()
-
-_parquet_path = Path("data/processed/ensemble_predictions.parquet")
-_batch_date = (
-    pd.Timestamp(_os.path.getmtime(_parquet_path), unit="s").strftime("%b %Y")
-    if _parquet_path.exists()
-    else "Unknown"
-)
+def score_metro(feat_df: pd.DataFrame, model) -> pd.DataFrame:
+    """Score features.parquet on-the-fly with the global XGBoost model."""
+    feat_cols = [c for c in feat_df.columns if c not in _SCORE_META]
+    X = feat_df[feat_cols].fillna(feat_df[feat_cols].median())
+    out = feat_df.copy()
+    out["risk_score"] = model.predict_proba(X)[:, 1]
+    out["risk_pct"]   = (out["risk_score"] * 100).round(1)
+    return out.sort_values("risk_pct", ascending=False).reset_index(drop=True)
 
 
-def risk_tier(pct: float) -> tuple[str, str, str]:
-    """Return tier name, CSS class, and hex color. pct is 0–100."""
+def _demo_data() -> pd.DataFrame:
+    """Synthetic fallback when data files are missing."""
+    rng = np.random.default_rng(42)
+    names = [
+        "Woody's Liquor & Fine Wine", "Winn-Dixie Deli", "Dunkin'",
+        "Top China", "Stacie's Cottage Cafe", "Chicago Deli & Coney Dogs",
+        "Walgreens Bistro", "Baskin-Robbins", "Taco Bell (Dale Mabry)",
+        "Taco Bell (Fowler)", "China Wok", "Spartan Manor",
+        "Unks Bar B Que", "Slizzy Mcgee's", "ABC Fine Wine Spirits",
+        "Beef 'O' Brady's", "Denny's Ybor", "IHOP Brandon",
+        "Checkers", "Golden Wok", "Sushi Time", "La Teresita",
+        "El Cap", "Mel's Hot Dogs", "Bern's Steak House",
+        "The Columbia Restaurant", "Oxford Exchange", "Ulele",
+        "Daily Eats", "Ciccio's",
+    ]
+    risk  = sorted(rng.beta(2, 5, size=len(names)) * 0.85 + 0.10, reverse=True)
+    stars = rng.uniform(1.0, 4.5, size=len(names)).round(1)
+    return pd.DataFrame({
+        "name":                    names,
+        "business_id":             [f"demo_{i}" for i in range(len(names))],
+        "risk_score":              risk,
+        "risk_pct":                [round(r * 100, 1) for r in risk],
+        "stars_yelp_global":       stars,
+        "months_with_zero_reviews": rng.integers(0, 6, size=len(names)),
+        "days_since_last_review":  rng.integers(10, 210, size=len(names)),
+        "review_drought_flag":     rng.integers(0, 2, size=len(names)),
+        "checkin_drought_flag":    rng.integers(0, 2, size=len(names)),
+        "pct_5star":               rng.uniform(0, 0.6, size=len(names)).round(2),
+        "city":                    ["Tampa"] * len(names),
+    })
+
+
+# ── Helper functions ──────────────────────────────────────────────────────────
+
+def risk_tier(pct: float):
     frac = pct / 100.0
     name = risk_label(frac).replace("MEDIUM", "ELEVATED")
     css  = {"HIGH": "risk-high", "ELEVATED": "risk-med", "LOW": "risk-low"}[name]
@@ -487,31 +477,30 @@ def risk_tier(pct: float) -> tuple[str, str, str]:
 
 
 def stars_html(rating: float) -> str:
-    full = int(rating)
-    half = 1 if (rating - full) >= 0.5 else 0
+    full  = int(rating)
+    half  = 1 if (rating - full) >= 0.5 else 0
     empty = 5 - full - half
     return "★" * full + "½" * half + "☆" * empty
 
 
 FEAT_LABELS = {
     "months_with_zero_reviews": "Months with zero reviews",
-    "days_since_last_review": "Days since last review",
-    "review_drought_flag": "Review drought flag",
-    "checkin_drought_flag": "Check-in drought flag",
-    "pct_5star": "% of 5-star reviews",
-    "review_velocity_trend": "Review velocity trend",
-    "checkin_velocity": "Check-in velocity",
-    "avg_sentiment_score": "Avg sentiment score",
-    "review_count_12m": "Review count (12m)",
+    "days_since_last_review":   "Days since last review",
+    "review_drought_flag":      "Review drought flag",
+    "checkin_drought_flag":     "Check-in drought flag",
+    "pct_5star":                "% of 5-star reviews",
+    "review_velocity_trend":    "Review velocity trend",
+    "checkin_velocity":         "Check-in velocity",
+    "avg_sentiment_score":      "Avg sentiment score",
+    "review_count_12m":         "Review count (12m)",
 }
 
 
-def restaurant_card_html(row, photo_index, selected=False):
-    bid = row["business_id"]
+def restaurant_card_html(row, photo_index, city_label: str, selected=False):
+    bid      = row["business_id"]
     risk_pct = row["risk_pct"]
     tier, css_class, hex_color = risk_tier(risk_pct)
 
-    # Photo
     photo_html = ""
     if bid in photo_index.index:
         photo_path = photo_index.loc[bid, "path"]
@@ -526,6 +515,7 @@ def restaurant_card_html(row, photo_index, selected=False):
 
     selected_class = "selected" if selected else ""
     stars = row.get("stars_yelp_global", row.get("stars_yelp", row.get("stars", 0)))
+    city  = row.get("city") or city_label
 
     return f"""
     <div class="cw-card {selected_class}">
@@ -535,7 +525,7 @@ def restaurant_card_html(row, photo_index, selected=False):
                 <div class="cw-card-name">{row['name']}</div>
                 <span class="cw-badge cw-badge-{tier}">{tier}</span>
             </div>
-            <div class="cw-card-meta">{row.get('city', 'Tampa')} &nbsp;·&nbsp; {stars:.1f}★</div>
+            <div class="cw-card-meta">{city} &nbsp;·&nbsp; {stars:.1f}★</div>
             <div class="cw-card-stats">
                 <span style="color:{hex_color};font-weight:700">{risk_pct:.1f}% risk</span>
                 <span>{int(row.get('days_since_last_review', 0))}d silent</span>
@@ -544,12 +534,47 @@ def restaurant_card_html(row, photo_index, selected=False):
     </div>
     """
 
-# Session state bootstrap must happen before the sidebar renders.
+
+# ── Session state defaults ────────────────────────────────────────────────────
+
+if "selected_metro" not in st.session_state:
+    st.session_state.selected_metro = "Tampa, FL"
+if "last_metro" not in st.session_state:
+    st.session_state.last_metro = "Tampa, FL"
 if "selected_idx" not in st.session_state:
-    st.session_state.selected_idx = int(df.index[0])
+    st.session_state.selected_idx = 0
 if "tier_filter" not in st.session_state:
     st.session_state.tier_filter = "All"
 
+# Reset restaurant selection when metro changes
+if st.session_state.selected_metro != st.session_state.last_metro:
+    st.session_state.selected_idx = 0
+    st.session_state.last_metro   = st.session_state.selected_metro
+
+# ── Load data for current metro ───────────────────────────────────────────────
+
+_metro_key      = st.session_state.selected_metro
+_metro_data_dir = METRO_CONFIG[_metro_key][0]
+_metro_city     = METRO_CONFIG[_metro_key][1]
+
+_xgb_model   = load_xgb_model()
+_feat_matrix = load_metro_features(_metro_data_dir)
+
+if _feat_matrix is not None and _xgb_model is not None:
+    df = score_metro(_feat_matrix, _xgb_model)
+else:
+    df = _demo_data()
+
+_feat_path = Path(_metro_data_dir) / "features.parquet"
+_batch_date = (
+    pd.Timestamp(_os.path.getmtime(_feat_path), unit="s").strftime("%b %Y")
+    if _feat_path.exists() else "Unknown"
+)
+
+photo_index = load_photo_index()
+
+
+# ── Sidebar button / selectbox CSS ───────────────────────────────────────────
 
 st.markdown("""
 <style>
@@ -617,17 +642,35 @@ section[data-testid="stSidebar"] .stSelectbox [data-baseweb="select"] {
 """, unsafe_allow_html=True)
 
 
+# ── Sidebar ───────────────────────────────────────────────────────────────────
+
 with st.sidebar:
-    st.markdown("""
+    st.markdown(f"""
         <div class="sidebar-brand">
             <div class="sidebar-brand-name">ClosureWatch</div>
-            <div class="sidebar-brand-sub">Tampa Bay · Live Risk Feed</div>
+            <div class="sidebar-brand-sub">{_metro_city} · Live Risk Feed</div>
         </div>
     """, unsafe_allow_html=True)
 
+    st.markdown('<div class="section-label" style="padding:0 2px;margin-bottom:4px">City</div>',
+                unsafe_allow_html=True)
+    new_metro = st.selectbox(
+        "City",
+        options=list(METRO_CONFIG.keys()),
+        index=list(METRO_CONFIG.keys()).index(st.session_state.selected_metro),
+        label_visibility="collapsed",
+    )
+    if new_metro != st.session_state.selected_metro:
+        st.session_state.selected_metro = new_metro
+        st.session_state.selected_idx   = 0
+        st.session_state.last_metro      = new_metro
+        st.rerun()
+
+    st.markdown("<hr style='margin:10px 0'>", unsafe_allow_html=True)
+
     query = st.text_input(
         "Search restaurants",
-        placeholder="�?  Search restaurants…",
+        placeholder="Search restaurants...",
         label_visibility="collapsed",
     )
 
@@ -640,10 +683,10 @@ with st.sidebar:
         ),
         label_visibility="collapsed",
         format_func=lambda x: {
-            "All": "\u2b24  All tiers",
-            "HIGH": "\u2b24  HIGH",
-            "ELEVATED": "\u2b24  MEDIUM",
-            "LOW": "\u2b24  LOW",
+            "All":      "⬤  All tiers",
+            "HIGH":     "⬤  HIGH",
+            "ELEVATED": "⬤  MEDIUM",
+            "LOW":      "⬤  LOW",
         }[x],
     )
     st.session_state.tier_filter = tier_filter
@@ -655,12 +698,8 @@ with st.sidebar:
     )
     risk_range = st.slider(
         "Risk range",
-        min_value=0,
-        max_value=100,
-        value=(0, 100),
-        step=5,
-        format="%d%%",
-        label_visibility="collapsed",
+        min_value=0, max_value=100, value=(0, 100), step=5,
+        format="%d%%", label_visibility="collapsed",
     )
 
     st.markdown(
@@ -701,8 +740,8 @@ with st.sidebar:
         filtered = filtered.sort_values("name", ascending=False)
 
     n_high = int((filtered["risk_pct"] >= 60).sum())
-    n_mid = int(((filtered["risk_pct"] >= 30) & (filtered["risk_pct"] < 60)).sum())
-    n_low = int((filtered["risk_pct"] < 30).sum())
+    n_mid  = int(((filtered["risk_pct"] >= 30) & (filtered["risk_pct"] < 60)).sum())
+    n_low  = int((filtered["risk_pct"] < 30).sum())
 
     st.markdown(f"""
     <div style="display:flex;gap:8px;padding:6px 2px;margin-bottom:6px">
@@ -723,18 +762,16 @@ with st.sidebar:
 
     st.markdown(f"""
         <div style="font-size:10px;color:#535353;padding:0 2px">
-            {len(filtered)} shown · {len(df)} total<br>
-            XGBoost ensemble · AUC-ROC 0.700
+            {len(filtered)} shown · {len(df):,} total<br>
+            Global XGBoost · LOMO AUC-ROC 0.781
         </div>
     """, unsafe_allow_html=True)
 
 
-# ── Card grid ──────────────────────────────────────────────────────
-photo_index = load_photo_index()
+# ── Card grid ─────────────────────────────────────────────────────────────────
 
 st.markdown("### Restaurants")
 
-# Show top N cards based on current filter + sort
 CARDS_PER_PAGE = 12
 display_df = filtered.head(CARDS_PER_PAGE).reset_index(drop=True)
 
@@ -743,19 +780,21 @@ for i, (_, row) in enumerate(display_df.iterrows()):
     col = cols[i % 3]
     with col:
         bid = row["business_id"]
-        is_selected = (st.session_state.selected_idx is not None and
-                       df.loc[st.session_state.selected_idx, "business_id"] == bid)
-
-        card_html = restaurant_card_html(row, photo_index, selected=is_selected)
+        is_selected = (
+            st.session_state.selected_idx is not None and
+            st.session_state.selected_idx < len(df) and
+            df.loc[st.session_state.selected_idx, "business_id"] == bid
+        )
+        card_html = restaurant_card_html(row, photo_index, _metro_city, selected=is_selected)
         st.markdown(card_html, unsafe_allow_html=True)
 
         if st.button(
-            f"View details \u2192 {row['name'][:25]}",
+            f"View details > {row['name'][:25]}",
             key=f"card_{bid}",
             use_container_width=True,
         ):
             idx = df[df["business_id"] == bid].index[0]
-            st.session_state.selected_idx = idx
+            st.session_state.selected_idx = int(idx)
             st.rerun()
 
 st.markdown("""
@@ -778,7 +817,8 @@ div[data-testid="stButton"] > button:hover {
 """, unsafe_allow_html=True)
 
 st.divider()
-# ── existing detail panel follows here unchanged ──
+
+# ── Detail panel ──────────────────────────────────────────────────────────────
 
 sel_idx = st.session_state.selected_idx
 if sel_idx not in df.index:
@@ -795,7 +835,7 @@ st.markdown(f"""
     <div class="cw-brand">📡 ClosureWatch</div>
     <div class="cw-title">{selected['name']}</div>
     <div class="cw-sub">
-        Tampa Bay Metro · Yelp Academic Dataset · 6-month closure prediction
+        {_metro_city} · Yelp Academic Dataset · 6-month closure prediction
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -803,8 +843,8 @@ st.markdown(f"""
 col_risk, col_metrics = st.columns([1, 2.5], gap="large")
 
 with col_risk:
-    yelp_stars = selected.get("stars", 2.5)
-    star_full = "★" * int(yelp_stars)
+    yelp_stars = selected.get("stars_yelp_global", selected.get("stars_yelp", selected.get("stars", 2.5)))
+    star_full  = "★" * int(yelp_stars)
     star_empty = "☆" * (5 - int(yelp_stars))
     st.markdown(f"""
     <div class="risk-display {tier_css}">
@@ -825,7 +865,7 @@ with col_risk:
                 Top {max(1, 100 - int(percentile_rank(df["risk_pct"], selected["risk_pct"]) * 100))}%
             </div>
             <div style="font-size:10px;color:var(--sp-text-hint);margin-top:2px">
-                riskiest in Tampa Bay
+                riskiest in {_metro_city}
             </div>
         </div>
     </div>
@@ -833,9 +873,9 @@ with col_risk:
 
 with col_metrics:
     m1, m2, m3 = st.columns(3)
-    days_val = int(selected.get("days_since_last_review", 0))
+    days_val   = int(selected.get("days_since_last_review", 0))
     months_val = float(selected.get("months_with_zero_reviews", 0))
-    pct_5 = float(selected.get("pct_5star", 0))
+    pct_5      = float(selected.get("pct_5star", 0))
     with m1:
         st.metric("Days Since Last Review", f"{days_val}d",
                   delta=None, help="Days elapsed from last review to anchor date")
@@ -847,11 +887,11 @@ with col_metrics:
                   help="Fraction of all reviews that are 5-star")
 
     d1, d2 = st.columns(2)
-    review_drought = bool(selected.get("review_drought_flag", 0))
+    review_drought  = bool(selected.get("review_drought_flag",  0))
     checkin_drought = bool(selected.get("checkin_drought_flag", 0))
     with d1:
         flag_color = "#E24B4A" if review_drought else "#1DB954"
-        flag_text = "TRIGGERED" if review_drought else "CLEAR"
+        flag_text  = "TRIGGERED" if review_drought else "CLEAR"
         st.markdown(f"""
         <div style="background:var(--sp-surface);border-radius:8px;padding:1rem 1.25rem;
                     border-left:3px solid {flag_color}">
@@ -864,7 +904,7 @@ with col_metrics:
         """, unsafe_allow_html=True)
     with d2:
         flag_color2 = "#E24B4A" if checkin_drought else "#1DB954"
-        flag_text2 = "TRIGGERED" if checkin_drought else "CLEAR"
+        flag_text2  = "TRIGGERED" if checkin_drought else "CLEAR"
         st.markdown(f"""
         <div style="background:var(--sp-surface);border-radius:8px;padding:1rem 1.25rem;
                     border-left:3px solid {flag_color2}">
@@ -881,7 +921,8 @@ st.markdown("<br>", unsafe_allow_html=True)
 chart_col, dist_col = st.columns([1.6, 1], gap="large")
 
 with chart_col:
-    st.markdown('<div class="section-label">Feature Contributions (SHAP)</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-label">Feature Contributions (SHAP)</div>',
+                unsafe_allow_html=True)
 
     _business_id = selected.get("business_id", None)
     shap_vals, feat_cols = None, None
@@ -889,34 +930,24 @@ with chart_col:
         shap_vals, feat_cols = compute_shap_row(_xgb_model, _feat_matrix, str(_business_id))
 
     if shap_vals is not None:
-        pairs = sorted(zip(shap_vals, feat_cols), key=lambda x: abs(x[0]), reverse=True)
+        pairs    = sorted(zip(shap_vals, feat_cols), key=lambda x: abs(x[0]), reverse=True)
         vals_s   = [p[0] for p in pairs]
-        labels_s = [
-            FEAT_LABELS.get(p[1], p[1].replace("_", " ").title())
-            for p in pairs
-        ]
+        labels_s = [FEAT_LABELS.get(p[1], p[1].replace("_", " ").title()) for p in pairs]
         colors_s = ["#E24B4A" if v > 0 else "#1DB954" for v in vals_s]
 
         fig_feat = go.Figure(go.Bar(
-            x=vals_s,
-            y=labels_s,
-            orientation="h",
-            marker_color=colors_s,
-            marker_line_width=0,
+            x=vals_s, y=labels_s, orientation="h",
+            marker_color=colors_s, marker_line_width=0,
         ))
         fig_feat.update_layout(
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
             font=dict(family="Montserrat", color="#B3B3B3", size=12),
-            margin=dict(l=0, r=16, t=4, b=4),
-            height=280,
+            margin=dict(l=0, r=16, t=4, b=4), height=280,
             xaxis=dict(
                 zeroline=True, zerolinecolor="#3e3e3e", zerolinewidth=1,
                 gridcolor="#282828", tickfont=dict(size=11, color="#535353"),
-                title=dict(
-                    text="← lowers risk  ·  raises risk →",
-                    font=dict(size=10, color="#535353"),
-                ),
+                title=dict(text="← lowers risk  ·  raises risk →",
+                           font=dict(size=10, color="#535353")),
             ),
             yaxis=dict(gridcolor="rgba(0,0,0,0)", tickfont=dict(size=11, color="#B3B3B3")),
             bargap=0.3,
@@ -925,7 +956,8 @@ with chart_col:
     else:
         st.markdown(
             '<div style="color:#535353;font-size:13px;padding:2rem">'
-            "SHAP model not available — run 05_modeling.py first, or select a restaurant with matching data.</div>",
+            "SHAP model not available — run 05_modeling.py first, or select a restaurant "
+            "with matching data.</div>",
             unsafe_allow_html=True,
         )
 
@@ -934,36 +966,22 @@ with dist_col:
 
     fig_dist = go.Figure()
     fig_dist.add_trace(go.Histogram(
-        x=df["risk_pct"],
-        nbinsx=30,
-        marker_color="#282828",
-        name="All restaurants",
+        x=df["risk_pct"], nbinsx=30, marker_color="#282828", name="All restaurants",
     ))
     fig_dist.add_vline(
-        x=selected["risk_pct"],
-        line_color=dot_color,
-        line_width=2,
+        x=selected["risk_pct"], line_color=dot_color, line_width=2,
         annotation_text=f"{selected['risk_pct']:.0f}%",
-        annotation_font_color=dot_color,
-        annotation_font_size=11,
+        annotation_font_color=dot_color, annotation_font_size=11,
         annotation_font_family="Montserrat",
     )
     fig_dist.update_layout(
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         font=dict(family="Montserrat", color="#B3B3B3", size=11),
-        margin=dict(l=0, r=0, t=4, b=4),
-        height=280,
-        showlegend=False,
-        bargap=0.05,
-        xaxis=dict(
-            gridcolor="#282828", tickfont=dict(size=10, color="#535353"),
-            title=dict(text="Closure risk %", font=dict(size=10, color="#535353")),
-        ),
-        yaxis=dict(
-            gridcolor="#282828", tickfont=dict(size=10, color="#535353"),
-            title=dict(text="Count", font=dict(size=10, color="#535353")),
-        ),
+        margin=dict(l=0, r=0, t=4, b=4), height=280, showlegend=False, bargap=0.05,
+        xaxis=dict(gridcolor="#282828", tickfont=dict(size=10, color="#535353"),
+                   title=dict(text="Closure risk %", font=dict(size=10, color="#535353"))),
+        yaxis=dict(gridcolor="#282828", tickfont=dict(size=10, color="#535353"),
+                   title=dict(text="Count", font=dict(size=10, color="#535353"))),
     )
     st.plotly_chart(fig_dist, use_container_width=True, config={"displayModeBar": False})
 
@@ -971,8 +989,8 @@ st.markdown(f"""
 <div style="margin-top:2rem;padding-top:1rem;border-top:1px solid #282828;
             display:flex;justify-content:space-between;align-items:center;
             font-size:11px;color:#535353">
-    <span>ClosureWatch · ML Final Project · Tampa Bay, FL</span>
-    <span>Yelp Academic Dataset · XGBoost Ensemble · AUC-ROC 0.700 · 5,143 restaurants</span>
+    <span>ClosureWatch · ML Final Project · {_metro_city}</span>
+    <span>Yelp Academic Dataset · Global XGBoost (9 metros) · LOMO AUC-ROC 0.781 · {len(df):,} restaurants</span>
     <span style="color:#B3B3B3;font-weight:700">📦 BATCH · {_batch_date}</span>
 </div>
 """, unsafe_allow_html=True)
