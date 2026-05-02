@@ -307,6 +307,163 @@ def plot_feature_importance(xgb_model, lr_pipe, feat_cols):
     save("23_feature_importance.png")
 
 
+# ── Figure 24: Top-5 feature profiles ────────────────────────────────────────
+
+FEATURE_META = {
+    "review_momentum": {
+        "title": "Review Momentum",
+        "unit": "ratio",
+        "desc": (
+            "Reviews in last 6 months divided by reviews in first 6 months\n"
+            "(+1 smoothing). Captures whether customer engagement is\n"
+            "accelerating or fading as the observation window closes."
+        ),
+    },
+    "review_velocity": {
+        "title": "Review Velocity",
+        "unit": "reviews / month",
+        "desc": (
+            "Average new Yelp reviews per month over the full 12-month\n"
+            "observation window. Low velocity signals declining visibility\n"
+            "and reduced foot traffic from online discovery."
+        ),
+    },
+    "n_checkins_obs": {
+        "title": "Total Check-ins (obs. window)",
+        "unit": "check-ins",
+        "desc": (
+            "Total Yelp check-ins logged during the observation window.\n"
+            "Reflects actual foot traffic independently of written reviews.\n"
+            "Zero check-ins is a particularly strong closure signal."
+        ),
+    },
+    "has_photo": {
+        "title": "Has Yelp Photo",
+        "unit": "binary (0 / 1)",
+        "desc": (
+            "Whether the business has at least one Yelp photo.\n"
+            "Restaurants without photos are 30 pp more likely to close —\n"
+            "often poorly maintained profiles or already inactive listings."
+        ),
+    },
+    "checkin_velocity": {
+        "title": "Check-in Velocity",
+        "unit": "check-ins / month",
+        "desc": (
+            "Average Yelp check-ins per month during the observation window.\n"
+            "Captures the pace of physical visits. A steep drop in velocity\n"
+            "often precedes permanent closure by several months."
+        ),
+    },
+}
+
+C_OPEN   = "#2E86AB"
+C_CLOSED = "#E84855"
+
+
+def plot_top5_feature_profiles(all_df: pd.DataFrame):
+    print("[24] Top-5 feature profile plots...")
+
+    TOP5 = ["review_momentum", "review_velocity", "n_checkins_obs",
+            "has_photo", "checkin_velocity"]
+
+    fig = plt.figure(figsize=(18, 11))
+    # 2-row layout: 3 plots top, 2 plots bottom (centred)
+    gs_top = fig.add_gridspec(2, 6, hspace=0.52, wspace=0.38,
+                              left=0.05, right=0.97, top=0.88, bottom=0.06)
+    axes = [
+        fig.add_subplot(gs_top[0, 0:2]),
+        fig.add_subplot(gs_top[0, 2:4]),
+        fig.add_subplot(gs_top[0, 4:6]),
+        fig.add_subplot(gs_top[1, 1:3]),
+        fig.add_subplot(gs_top[1, 3:5]),
+    ]
+
+    open_df   = all_df[all_df[TARGET_COL] == 0]
+    closed_df = all_df[all_df[TARGET_COL] == 1]
+    n_open    = len(open_df)
+    n_closed  = len(closed_df)
+
+    for ax, feat in zip(axes, TOP5):
+        meta = FEATURE_META[feat]
+
+        if feat == "has_photo":
+            # Binary feature: grouped bar — % with photo per class
+            pct_open   = open_df[feat].mean()
+            pct_closed = closed_df[feat].mean()
+            bars = ax.bar(
+                ["Open\n(still active)", "Closed\n(within 6m)"],
+                [pct_open * 100, pct_closed * 100],
+                color=[C_OPEN, C_CLOSED], alpha=0.82, width=0.5,
+            )
+            for bar, pct in zip(bars, [pct_open, pct_closed]):
+                ax.text(
+                    bar.get_x() + bar.get_width() / 2,
+                    bar.get_height() + 1.0,
+                    f"{pct:.0%}", ha="center", va="bottom",
+                    fontsize=11, fontweight="bold",
+                )
+            ax.set_ylabel("% with photo", fontsize=9)
+            ax.set_ylim(0, 85)
+            ax.axhline(50, color="#666", linewidth=0.8, linestyle="--", alpha=0.5)
+
+        else:
+            p99 = all_df[feat].quantile(0.99)
+            d_open   = open_df[feat].dropna().clip(upper=p99).values
+            d_closed = closed_df[feat].dropna().clip(upper=p99).values
+
+            vp = ax.violinplot(
+                [d_open, d_closed], positions=[0, 1],
+                showmedians=True, showextrema=False, widths=0.7,
+            )
+            vp["bodies"][0].set_facecolor(C_OPEN);   vp["bodies"][0].set_alpha(0.55)
+            vp["bodies"][1].set_facecolor(C_CLOSED); vp["bodies"][1].set_alpha(0.55)
+            vp["cmedians"].set_color("white"); vp["cmedians"].set_linewidth(2)
+
+            med_open   = float(np.median(d_open))
+            med_closed = float(np.median(d_closed))
+            p5  = float(all_df[feat].quantile(0.05))
+            p95 = float(all_df[feat].quantile(0.95))
+
+            # Median labels
+            ax.text(0, med_open   + p99 * 0.04, f"med={med_open:.2f}",
+                    ha="center", fontsize=8, color=C_OPEN,   fontweight="bold")
+            ax.text(1, med_closed + p99 * 0.04, f"med={med_closed:.2f}",
+                    ha="center", fontsize=8, color=C_CLOSED, fontweight="bold")
+
+            # Stats box
+            ax.text(0.97, 0.96,
+                    f"p5={p5:.2f}  p95={p95:.2f}",
+                    transform=ax.transAxes, ha="right", va="top",
+                    fontsize=7.5, color="#888",
+                    bbox=dict(boxstyle="round,pad=0.3", fc="#1a1a1a", ec="#444", alpha=0.7))
+
+            ax.set_xticks([0, 1])
+            ax.set_xticklabels(
+                [f"Open\n(n={n_open:,})", f"Closed\n(n={n_closed:,})"],
+                fontsize=8,
+            )
+            ax.set_ylabel(meta["unit"], fontsize=8)
+            ax.set_ylim(bottom=0)
+
+        ax.set_title(meta["title"], fontweight="bold", fontsize=11, pad=6)
+
+        # Description below the subplot
+        ax.text(
+            0.5, -0.28, meta["desc"],
+            transform=ax.transAxes, ha="center", va="top",
+            fontsize=7.8, color="#aaaaaa", style="italic",
+            multialignment="center",
+        )
+
+    fig.suptitle(
+        "Top 5 Most Important Features — Global XGBoost Model\n"
+        "Distribution by Outcome (Open vs Closed within 6 months)",
+        fontsize=13, fontweight="bold", y=0.97,
+    )
+    save("24_top5_feature_profiles.png")
+
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 def main():
@@ -346,10 +503,11 @@ def main():
     ])
     lr_pipe.fit(X_train, y_train)
 
-    # Figs 21-23
+    # Figs 21-24
     plot_pr_roc(train_df, test_df, feat_cols, xgb_model, lr_pipe)
     plot_shap_beeswarm(test_df, xgb_model)
     plot_feature_importance(xgb_model, lr_pipe, feat_cols)
+    plot_top5_feature_profiles(all_df)
 
     print("\nDone.")
 
