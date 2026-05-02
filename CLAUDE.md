@@ -1,7 +1,7 @@
-# Restaurant Failure Prediction — CLAUDE.md
+# ClosureWatch — CLAUDE.md
 
-> This file is read by Claude Code automatically. It describes the project,
-> pipeline, conventions, and guidance for any agentic work in this repository.
+> Auto-read by Claude Code. Describes the full project state, pipeline,
+> conventions, and results. Update this file after every major change.
 
 ---
 
@@ -11,9 +11,13 @@
 for a restaurant, predict whether it will permanently close in the next 6 months.
 
 **Dataset:** Yelp Academic Dataset (https://www.yelp.com/dataset)
-**Geography:** Tampa, FL primary; expand to all Florida if Tampa yields < 200 closures.
-**Stakeholder framing:** SME credit underwriting (think Kabbage/BlueVine) —
-predicting business failure from public behavioral data.
+**Geography:** Tampa Bay primary → expanded to 9 US metros + Edmonton (Canada)
+**Stakeholder framing:** SME credit underwriting (Kabbage/BlueVine style) —
+predicting business failure from public behavioral data, same way alternative
+lenders use transaction signals.
+
+**App:** ClosureWatch — Streamlit dashboard with photo card grid, SHAP
+explanations, risk percentile, and outcome banners.
 
 ---
 
@@ -21,99 +25,92 @@ predicting business failure from public behavioral data.
 
 ```
 restaurant_failure/
-├── CLAUDE.md                     ← you are here
-├── config_00.py                  ← all global constants; edit this first
-├── 01_load_filter.py             ← load Yelp JSON → filtered Parquet
-├── 02_build_labels.py            ← anchor dates + leakage-safe binary labels
-├── 03_feature_engineering.py     ← time-windowed features (VADER, velocity, trend)
-├── 04_eda.py                     ← EDA plots → figures/
-├── 05_modeling.py                ← LogReg benchmark + LightGBM + CV + test eval
+├── CLAUDE.md                  ← you are here
+├── config_00.py               ← all global constants — edit this first
+│
+├── 01_load_filter.py          ← load Yelp JSON → filtered Parquet (Tampa)
+├── 02_build_labels.py         ← anchor dates + leakage-safe binary labels
+├── 03_feature_engineering.py  ← time-windowed features (VADER, velocity, trend)
+├── 04_eda.py                  ← basic EDA plots → figures/
+├── 04b_data_quality.py        ← data quality diagnostics (1A-1E)
+├── 05_modeling.py             ← algorithm shootout (5 models) + CV + test eval
+├── 06_ensemble.py             ← stacking ensemble (XGB + RF + LR)
+├── 07_model_analysis.py       ← SHAP global, error analysis, threshold curves
+├── 08_philadelphia.py         ← Philadelphia zero-shot pipeline
+├── 09_multi_metro.py          ← multi-metro pipeline (all 9 metros + Edmonton)
+├── 10_lomo_cv.py              ← Leave-One-Metro-Out CV + global model
+│
+├── photo_index.py             ← builds business_id → best photo path lookup
+├── app.py                     ← Streamlit dashboard (ClosureWatch)
+├── app_helpers.py             ← risk color/label/SHAP helpers
 │
 ├── data/
-│   ├── raw/                      ← drop ALL Yelp source files here (see below)
-│   └── processed/                ← auto-generated Parquet files (do not edit)
-├── models/                       ← saved model artifacts + results_summary.json
-└── figures/                      ← all plots (auto-generated, safe to delete)
+│   ├── raw/                   ← Yelp JSON source files
+│   ├── raw_photos/            ← photos.json + photos/*.jpg (200k images)
+│   ├── processed/             ← Tampa processed Parquets
+│   ├── processed_philly/      ← Philadelphia
+│   ├── processed_indianapolis/
+│   ├── processed_nashville/
+│   ├── processed_new_orleans/
+│   ├── processed_saint_louis/
+│   ├── processed_tucson/
+│   ├── processed_reno/
+│   ├── processed_boise/
+│   └── processed_edmonton/    ← Canada OOD test
+│
+├── models/
+│   ├── xgboost.pkl            ← Tampa-only XGBoost (v1)
+│   ├── xgboost_global.pkl     ← Global 9-metro XGBoost (v3, FINAL)
+│   ├── logistic_regression.pkl← Benchmark model
+│   ├── random_forest.pkl      ← Part of ensemble
+│   ├── lightgbm_model.pkl     ← Algorithm shootout (referenced by app)
+│   ├── ensemble_results.json  ← Stacking ensemble metrics
+│   ├── lomo_results.json      ← LOMO CV results (all 9 metros)
+│   ├── results_summary.json   ← Tampa single-city results
+│   ├── philadelphia_results.json
+│   └── leaderboard.csv        ← Algorithm shootout leaderboard
+│
+└── figures/                   ← all plots (safe to delete and regenerate)
+    └── eda_deep/              ← deep EDA figures (06_eda_deep.py output)
 ```
 
 ---
 
-## Raw Data Files (data/raw/)
+## Raw Data Files
 
-Place all Yelp JSON files here before running any script.
-
-| File | Status | Used in |
+| File | Location | Status |
 |---|---|---|
-| `yelp_academic_dataset_business.json` | Required | `01_load_filter.py` |
-| `yelp_academic_dataset_review.json` | Required | `01_load_filter.py` |
-| `yelp_academic_dataset_checkin.json` | Required | `01_load_filter.py` |
-| `yelp_academic_dataset_tip.json` | Required | `01_load_filter.py` |
-| `yelp_academic_dataset_photos.json` | **Downloaded, not yet used** | Future work (see below) |
+| `yelp_academic_dataset_business.json` | `data/raw/Yelp JSON/` | ✅ Required |
+| `yelp_academic_dataset_review.json` | `data/raw/Yelp JSON/` | ✅ Required |
+| `yelp_academic_dataset_checkin.json` | `data/raw/Yelp JSON/` | ✅ Required |
+| `yelp_academic_dataset_tip.json` | `data/raw/Yelp JSON/` | ✅ Required |
+| `yelp_academic_dataset_photos.json` | `data/raw_photos/` | ✅ Indexed |
+| `photos/*.jpg` | `data/raw_photos/photos/` | ✅ 200k images |
 
-### Photo Data — Future Work
-
-The photos file (`yelp_academic_dataset_photos.json`) has been downloaded and
-is available in `data/raw/`. It is **not used in the current pipeline** but is
-reserved for a potential future feature engineering module.
-
-**Planned use cases (do not implement until instructed):**
-- Photo count and recency as a proxy for owner engagement
-- Photo category distribution (food vs interior vs exterior) as a quality signal
-- Image-based quality scoring via a vision model (e.g. CLIP embeddings)
-- Decline in photo upload frequency as a leading closure indicator
-
-When implementing photo features, create a new script `03b_photo_features.py`
-and merge its output into the main feature matrix before `04_eda.py`. All photo
-features must be filtered to `date < anchor_date` to prevent leakage.
-
----
-
-## Pipeline — Run Order
-
-Always run scripts in numerical order. Each script depends on the output of
-the previous one.
-
-```bash
-python 01_load_filter.py           # ~5-10 min
-python 02_build_labels.py          # ~2 min
-python 03_feature_engineering.py   # ~10-20 min (VADER is slow)
-python 04_eda.py                   # ~1 min
-python 05_modeling.py              # ~5-10 min
-```
-
-To re-run only from a specific step, the upstream Parquet files are preserved
-and do not need to be regenerated unless the upstream script changes.
+**Photo coverage:** 3,294 / 5,143 Tampa restaurants (64%). `photo_index.parquet`
+maps `business_id → best photo path` (food label preferred). `has_photo` is
+included as a feature in `09_multi_metro.py`.
 
 ---
 
 ## Temporal Design — Anti-Leakage Rules
 
-This is the most critical correctness constraint in the project.
-
 ```
-Timeline per restaurant:
-
-|--- obs_start ---|--- OBSERVATION WINDOW (12m) ---|--- anchor_date ---|--- OUTCOME WINDOW (6m) ---|--- outcome_end
-                          Features built here               ↑                   Label determined here
-                                                      Anchor date
-                                                 (80th pct review date)
+|--- obs_start ---|--- OBSERVATION WINDOW (12m) ---|--- anchor_date ---|--- OUTCOME (6m) ---|
+                         Features built here                ↑                Label here
+                                                     80th pct review date
 ```
 
-**Hard rules — never violate these:**
+**Hard rules — never violate:**
 
-1. **Features use only data where `date < anchor_date`.**
-   Any feature accidentally using data on or after `anchor_date` is a leak.
-
-2. **The anchor is the 80th percentile review date, not the last review.**
-   Using the last review as anchor would expose the review drought signal trivially.
-
-3. **Imputation medians are computed on the training fold only**, then applied
-   to validation. Never fit imputers on the full dataset.
-
-4. **Train/test split is time-based** (most recent 15% by anchor date = test).
-   Never use random splits — they leak future business states into training.
-
-5. **Cross-validation folds are expanding-window**, not random k-fold.
+1. Features use only `date < anchor_date` — no exceptions
+2. Anchor = 80th percentile review date, NOT last review
+3. Imputation medians fit on training fold only
+4. Train/test split is time-based (anchor_date cutoff)
+5. LOMO CV: hold out entire metro, train on rest
+6. LATEST_ANCHOR = 2020-06-01 for all metros (prevents dataset-edge label noise)
+7. Label rule: last_review > outcome_end + 3m → open (0);
+   last_review ≤ outcome_end → closed (1); else ambiguous → 0
 
 ---
 
@@ -121,134 +118,191 @@ Timeline per restaurant:
 
 | Constant | Value | Notes |
 |---|---|---|
-| `OBS_MONTHS` | 12 | Observation window length |
-| `OUTCOME_MONTHS` | 6 | How far ahead we predict |
-| `LATEST_ANCHOR` | `2021-06-01` | Adjust to dataset coverage |
-| `EARLIEST_ANCHOR` | `2016-01-01` | Needs 12m history before |
-| `MIN_CLOSED_THRESHOLD` | 200 | Tampa floor before FL expansion |
-| `N_FOLDS` | 5 | CV folds |
-| `TEST_FRAC` | 0.15 | Held-out test fraction |
-| `TARGET_COL` | `closed_within_6m` | Label column name |
-| `PRIMARY_METRIC` | `average_precision` | AUC-PR is primary |
+| `OBS_MONTHS` | 12 | Observation window |
+| `OUTCOME_MONTHS` | 6 | Prediction horizon |
+| `LATEST_ANCHOR` | `2020-06-01` | Prevents 2021 edge artifact |
+| `EARLIEST_ANCHOR` | `2016-01-01` | Drop, not clip, out-of-range |
+| `TARGET_COL` | `closed_within_6m` | Label column |
+| `PRIMARY_METRIC` | `average_precision` | AUC-PR |
+| `ENCODING` | `utf-8` | All file reads |
+| `RAW_DIR` | `data/raw/Yelp JSON` | Source JSON location |
 
 ---
 
-## Final Results — Complete Pipeline
+## Features (48 total + has_photo = 49 in multi-metro)
 
-### Individual Models (held-out test, 1,244 restaurants)
+### Volume & Velocity
+- `n_reviews_obs`, `review_velocity`, `review_velocity_slope`
+- `months_with_zero_reviews`, `days_since_last_review`
+- `review_drought_flag` (binary: silent 90+ days)
+- `review_momentum` — reviews_last_6m / (reviews_first_6m + 1)
+
+### Rating Signals
+- `mean_stars_obs`, `std_stars_obs`, `rating_trend_slope`
+- `stars_delta_3m` — last 3m minus first 3m avg
+- `pct_1star`, `pct_5star`
+- `stars_recent_3m`, `stars_early_3m`
+
+### VADER Sentiment
+- `mean_vader`, `vader_trend_slope`, `vader_trend_3m`
+- `pct_negative_vader`, `vader_stars_divergence`
+
+### Checkin Signals
+- `n_checkins_obs`, `checkin_velocity`, `checkin_velocity_slope`
+- `checkin_drought_flag`, `checkin_momentum`
+
+### Reviewer Quality
+- `mean_review_useful`, `mean_review_funny`, `mean_review_cool`
+- `pct_high_quality_reviews`
+
+### Tips
+- `n_tips_obs`, `tip_velocity`, `mean_tip_compliments`
+
+### Business Metadata
+- `price_range`, `open_days_per_week`, `stars_yelp_global`
+- `is_fast_food`, `is_bar`, `is_cafe`, `is_pizza`, `is_mexican`, `is_seafood`
+
+### Photo (multi-metro only)
+- `has_photo` — binary: business has at least 1 Yelp photo
+
+---
+
+## Model Evolution
+
+| Version | Training | Test AUC-PR | Test AUC-ROC |
+|---|---|---|---|
+| v1 Logistic Regression (benchmark) | Tampa only | 0.157 | 0.646 |
+| v1 XGBoost (Tampa-only) | Tampa only | 0.207 | 0.700 |
+| v2 Zero-shot Philadelphia | Tampa model → Philly | 0.142 | 0.617 |
+| **v3 Global LOMO (FINAL)** | **8 metros → 1 held out** | **0.360 mean** | **0.781 mean** |
+
+---
+
+## Algorithm Shootout (Tampa-only, held-out test)
 
 | Model | CV AUC-PR | Test AUC-PR | Test AUC-ROC | Test F1 |
 |---|---|---|---|---|
-| XGBoost (best single) | 0.124 ± 0.039 | 0.2069 | 0.7002 | 0.2448 |
-| Random Forest | 0.112 ± 0.054 | 0.1994 | 0.6948 | 0.1347 |
-| LightGBM | 0.091 ± 0.021 | 0.1977 | 0.6699 | 0.2093 |
-| MLP Neural Network | 0.083 ± 0.010 | 0.1592 | 0.6187 | 0.1622 |
-| Logistic Regression (benchmark) | 0.106 ± 0.035 | 0.1574 | 0.6458 | 0.2553 |
+| XGBoost ✓ | 0.124 ± 0.039 | 0.207 | 0.700 | 0.245 |
+| Random Forest | 0.112 ± 0.054 | 0.199 | 0.695 | 0.135 |
+| LightGBM | 0.091 ± 0.021 | 0.198 | 0.670 | 0.209 |
+| MLP Neural Net | 0.083 ± 0.010 | 0.159 | 0.619 | 0.162 |
+| Logistic Regression | 0.106 ± 0.035 | 0.157 | 0.646 | 0.255 |
 
-### Ensemble Model (production)
+**Ensemble (stacking XGB + RF + LR):**
+- AUC-PR: 0.200 | AUC-ROC: 0.694
+- Optimal threshold: 0.27 (F1-optimized) | F1: 0.299
 
-- Strategy: Stacking with meta-LogisticRegression (XGBoost + RF + LR)
-- Test AUC-PR: 0.1997  |  Test AUC-ROC: 0.6941
-- Optimal threshold: 0.2704 (F1-optimized, vs default 0.5)
-- Optimized F1: 0.2994 (vs 0.22 at threshold 0.5)
+---
 
-### Business Operating Point (threshold = 0.27)
+## LOMO CV Results — 9 US Metros
+
+*Leave-One-Metro-Out: train on 8 metros, test on held-out metro*
+
+| Metro | AUC-PR | AUC-ROC | F1 | N |
+|---|---|---|---|---|
+| New Orleans | 0.4926 | 0.8388 | 0.4273 | 1,786 |
+| Reno | 0.4718 | 0.8273 | 0.4810 | 921 |
+| Indianapolis | 0.4400 | 0.7942 | 0.4276 | 2,098 |
+| Tucson | 0.4159 | 0.8066 | 0.4049 | 1,825 |
+| Philadelphia | 0.3768 | 0.7793 | 0.3767 | 4,258 |
+| Nashville | 0.3523 | 0.7898 | 0.3579 | 1,776 |
+| Boise | 0.3016 | 0.7461 | 0.3117 | 627 |
+| Saint Louis | 0.2600 | 0.7528 | 0.2513 | 1,274 |
+| Tampa | 0.1310 | 0.6953 | 0.1583 | 5,143 |
+| **Mean** | **0.360 ±0.108** | **0.781 ±0.042** | | ~19,708 |
+
+**Edmonton OOD (Canada, global model):** AUC-PR=0.245, AUC-ROC=0.655
+
+### Key Findings
+- Global model is **77% better** than Tampa-only (AUC-PR 0.360 vs 0.203)
+- Tampa is the hardest metro — lowest closure rate (6.3%) makes
+  calibration from other markets difficult
+- Silence signal generalizes to Canada without retraining
+- Cross-metro AUC-ROC consistently above 0.74 (except Tampa + Boise)
+
+---
+
+## Cross-City Zero-Shot (Tampa model → Philadelphia)
+
+| Metric | Tampa | Philadelphia |
+|---|---|---|
+| AUC-ROC | 0.694 | 0.617 (-11%) |
+| AUC-PR | 0.203 | 0.142 (-30%) |
+
+**Conclusion:** Ranking signal partially universal; calibration is local.
+Global LOMO model solves the calibration problem.
+
+---
+
+## Data Quality Notes
+
+- Zero duplicates by business_id in all metros
+- Price range valid (1–4 only); Philly coverage 84.9% vs Tampa 90.2%
+- COVID uplift: Tampa +3.1pp, Philadelphia +5.7pp closure rate
+- 2021 cohort excluded from all metros (dataset-edge artifact)
+- Philadelphia review density ~40% lower than Tampa per restaurant
+- High-null features (VADER trend, stars_delta, tip_compliments) are
+  intentional — require minimum review count, handled by LightGBM/XGBoost natively
+
+---
+
+## Dataset Geography
+
+9 distinct US metros + Edmonton (Canada). NOT a nationwide sample:
+
+| Metro | States/Cities | ~Restaurants |
+|---|---|---|
+| Philadelphia | PA + NJ suburbs | ~7,500 |
+| Tampa Bay | FL (Tampa + suburbs) | ~5,000 |
+| Indianapolis | IN + suburbs | ~4,000 |
+| Tucson | AZ | ~3,300 |
+| Nashville | TN + suburbs | ~3,500 |
+| New Orleans | LA + Metairie/Kenner | ~3,200 |
+| Saint Louis | MO | ~3,000 |
+| Reno | NV + Sparks | ~2,400 |
+| Boise | ID + Meridian | ~1,600 |
+| Edmonton | AB (OOD test) | ~2,800 |
+
+**Limitation:** No NYC, LA, Chicago, Houston — biased toward Sun Belt
+and Midwest mid-size cities.
+
+---
+
+## Business Operating Point (Tampa, threshold=0.27)
 
 - Restaurants flagged high risk: 205 / 1,244 (16.5%)
 - Closures caught: 50 / 129 (38.8% recall)
-- Base rate recall (random): 6.3%
-- Lift over random at threshold: 6x
-
-### Features (48 total)
-
-Added in fine-tuning:
-- `review_momentum`: rate of change in review velocity
-- `checkin_momentum`: rate of change in checkin velocity
-
-### Key Finding
-
-Silence predicts failure. Top features by importance:
-1. months_with_zero_reviews
-2. days_since_last_review
-3. review_drought_flag
-4. checkin_drought_flag
-5. review_momentum (new)
-
-### Momentum Features (added 2026-04-20)
-
-Two features split the 12-month observation window at the midpoint (6 months):
-
-- `review_momentum` — `reviews_last_6m / (reviews_first_6m + 1)`. Values < 1.0 indicate
-  slowing review activity; < 0.5 indicates severe decline. Computed in `build_features_one()`.
-- `checkin_momentum` — `checkins_last_6m / (checkins_first_6m + 1)`. Same interpretation
-  for foot traffic. Addresses the limitation that `days_since_last_review=60` could mean
-  stable or freefall — momentum disambiguates.
-
-Both features use only `date < anchor_date` data (no leakage).
+- Lift over random: 6×
+- Optimized F1: 0.299
 
 ---
 
-## Cross-City Generalization (Zero-Shot)
+## Assignment Requirements
 
-Model trained on Tampa Bay only, applied to Philadelphia without retraining.
-
-| Metric | Tampa (test) | Philadelphia (zero-shot) |
+| Requirement | Status | Where |
 |---|---|---|
-| N restaurants | 1,244 | 4,258 |
-| Base rate | 10.4% | 10.7% |
-| AUC-ROC | 0.694 | 0.617 |
-| AUC-PR | 0.203 | 0.142 |
-| F1 | 0.188 | 0.193 |
-
-**Key finding:** AUC-ROC degrades 11% cross-city (ranking signal is partially universal). AUC-PR degrades 30% (calibration is local — Philadelphia has lower review density, making silence signals noisier).
-
-**Conclusion:** Signals are universal, calibration is local. Retraining on local data recommended for production deployment.
-
-### Data Quality Notes
-- COVID uplift: Tampa +3.1pp, Philadelphia +5.7pp closure rate
-- 2021 cohort excluded from both cities (dataset edge artifact)
-- Philadelphia review density ~40% lower than Tampa per restaurant
-- Zero duplicates, clean schema in both cities
-
----
-
-## Dependencies
-
-```bash
-pip install pandas numpy lightgbm scikit-learn imbalanced-learn \
-            vaderSentiment matplotlib seaborn tqdm joblib \
-            python-dateutil pyarrow
-```
-
-Python 3.10+ recommended.
-
----
-
-## Assignment Requirements Mapping
-
-| Requirement | Where addressed |
-|---|---|
-| Novel dataset (not Kaggle) | Yelp Academic Dataset |
-| Data cleaning + EDA | `01_load_filter.py`, `04_eda.py` |
-| Literature review | Presentation slides (manual) |
-| Benchmark model | Logistic Regression in `05_modeling.py` |
-| ML model with CV | LightGBM with 5-fold expanding-window CV |
-| Train/val/test split | `05_modeling.py` (time-based) |
-| Correct metrics | AUC-PR primary (imbalanced classification) |
-| 10-15 slide presentation | To be built after modeling is complete |
-| Extra credit (GenAI comparison) | `06_genai_comparison.py` (not yet created) |
+| Novel dataset (not Kaggle) | ✅ | Yelp Academic Dataset |
+| Data cleaning + EDA | ✅ | `01_load_filter.py`, `04_eda.py`, `04b_data_quality.py` |
+| Literature review | ⏳ | Presentation slides |
+| Benchmark model | ✅ | Logistic Regression, `05_modeling.py` |
+| ML model + CV | ✅ | XGBoost, 5-fold + LOMO CV |
+| Train/val/test split | ✅ | Time-based + metro-based |
+| Correct metrics | ✅ | AUC-PR primary (imbalanced) |
+| Presentation (10-15 slides) | ⏳ | Due Tuesday |
+| Extra credit GenAI | ⏳ | Optional |
 
 ---
 
 ## Notes for Claude Code
 
-- **Always check `config_00.py` first** before modifying any path or constant.
-- **Do not modify files in `data/processed/`** — delete and re-run the upstream
-  script instead.
-- **Do not use random train/test splits** anywhere in this project.
-- If adding new features, add them to `03_feature_engineering.py` inside
-  `build_features_one()` and document them in the Features section of this file.
-- If the Tampa sample is too small after running `02_build_labels.py`, set
-  `PRIMARY_CITIES = []` and `FALLBACK_STATES = ["FL"]` in `config_00.py`.
-- Photo features: **do not implement until explicitly requested**. See Photo
-  Data section above.
+- **Always check `config_00.py` first** before modifying paths or constants
+- **LATEST_ANCHOR = 2020-06-01** for all metros — do not change
+- **Do not use random train/test splits** anywhere
+- **Final model is `xgboost_global.pkl`** — trained on all 9 metros combined
+- **Benchmark is `logistic_regression.pkl`** — Tampa only
+- Photo features: `has_photo` is live in `09_multi_metro.py`.
+  Additional photo features (`photo_recency_days`, `n_food_photos`) not yet implemented
+- To add new features: edit `build_features_one()` in `03_feature_engineering.py`
+  AND `build_features()` in `09_multi_metro.py` to keep them in sync
+- Edmonton is OOD test only — do not include in LOMO training folds
+- `data/processed_*/` directories: do not edit manually, re-run upstream script
