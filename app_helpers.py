@@ -79,9 +79,10 @@ def compute_shap_row(model, feature_matrix: "pd.DataFrame", business_id: str):
     if model is None or feature_matrix is None:
         return None, None
 
-    _META = {"business_id", "closed_within_6m", "anchor_date", "city", "state",
-             "metro", "name", "risk_score", "risk_pct"}
-    feat_cols = [c for c in feature_matrix.columns if c not in _META]
+    # Use model's own feature names so the column list always matches training exactly,
+    # regardless of extra columns (lat/lon, risk_score, etc.) added by the app.
+    booster = model.get_booster()
+    feat_cols = booster.feature_names  # list in training order
 
     feature_matrix = feature_matrix.copy()
     feature_matrix["anchor_date"] = pd.to_datetime(feature_matrix["anchor_date"])
@@ -92,8 +93,9 @@ def compute_shap_row(model, feature_matrix: "pd.DataFrame", business_id: str):
 
     TEST_CUTOFF = "2020-06-01"
     train_rows = feature_matrix[feature_matrix["anchor_date"] < TEST_CUTOFF]
-    train_medians = train_rows[feat_cols].median()
-    X = row[feat_cols].fillna(train_medians)
+    available = [c for c in feat_cols if c in feature_matrix.columns]
+    train_medians = train_rows[available].median()
+    X = row.reindex(columns=feat_cols).fillna(train_medians)
 
     explainer = shap.TreeExplainer(model)
     sv = explainer.shap_values(X)
