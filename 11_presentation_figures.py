@@ -643,6 +643,94 @@ def plot_fp_fn_profile(test_df, xgb_prob, feat_cols):
     save("27_fp_fn_error_profile.png")
 
 
+# ── Figure 29: Precision@K and lift curve ─────────────────────────────────────
+
+def plot_precision_at_k(y_test: np.ndarray, xgb_prob: np.ndarray, lr_prob: np.ndarray):
+    print("[29] Precision@K and lift curve...")
+    base_rate = y_test.mean()
+    K_values  = [10, 25, 50, 100, 200, 500]
+
+    fig, axes = plt.subplots(1, 2, figsize=(13, 5))
+
+    # ── Panel 1: Precision@K bar chart ───────────────────────────────────────
+    ax = axes[0]
+    x  = np.arange(len(K_values))
+    w  = 0.35
+
+    for offset, label, prob, color in [
+        (-w/2, "XGBoost",             xgb_prob, C_XGB),
+        ( w/2, "Logistic Regression", lr_prob,  C_LR),
+    ]:
+        sorted_idx = np.argsort(prob)[::-1]
+        y_sorted   = y_test[sorted_idx]
+        prec_at_k  = [y_sorted[:k].mean() for k in K_values]
+        bars = ax.bar(x + offset, prec_at_k, w, label=label, color=color, alpha=0.85)
+        for bar, p in zip(bars, prec_at_k):
+            ax.text(bar.get_x() + bar.get_width() / 2,
+                    bar.get_height() + 0.005,
+                    f"{p:.0%}", ha="center", va="bottom", fontsize=8)
+
+    ax.axhline(base_rate, color=C_BASE, linestyle="--", linewidth=1.2,
+               label=f"Random baseline ({base_rate:.1%})")
+    ax.set_xticks(x)
+    ax.set_xticklabels([f"@{k}" for k in K_values])
+    ax.set_ylabel("Precision (fraction closed)", fontsize=10)
+    ax.set_title("Precision@K — Top-K Riskiest Restaurants", fontweight="bold")
+    ax.legend(fontsize=9)
+    ax.set_ylim(0, min(1.0, base_rate * 8))
+
+    # ── Panel 2: Cumulative lift / gain curve ────────────────────────────────
+    ax2   = axes[1]
+    n     = len(y_test)
+    steps = np.arange(1, n + 1)
+
+    for label, prob, color in [
+        ("XGBoost",             xgb_prob, C_XGB),
+        ("Logistic Regression", lr_prob,  C_LR),
+    ]:
+        sorted_idx   = np.argsort(prob)[::-1]
+        y_sorted     = y_test[sorted_idx]
+        cum_closures = np.cumsum(y_sorted)
+        total_closed = y_test.sum()
+        gain         = cum_closures / total_closed
+        pct_reviewed = steps / n
+        ax2.plot(pct_reviewed * 100, gain * 100, color=color, linewidth=2, label=label)
+
+    ax2.plot([0, 100], [0, 100], color=C_BASE, linestyle="--", linewidth=1.2,
+             label="Random baseline")
+    ax2.fill_between([0, 100], [0, 100], alpha=0.04, color=C_BASE)
+
+    for label, prob, color in [
+        ("XGBoost", xgb_prob, C_XGB),
+        ("LR",      lr_prob,  C_LR),
+    ]:
+        sorted_idx    = np.argsort(prob)[::-1]
+        y_sorted      = y_test[sorted_idx]
+        cum_closures  = np.cumsum(y_sorted)
+        total_closed  = y_test.sum()
+        idx_20        = max(1, int(n * 0.20)) - 1
+        gain_20       = cum_closures[idx_20] / total_closed
+        ax2.scatter(20, gain_20 * 100, color=color, s=70, zorder=5)
+        ax2.annotate(f"{gain_20:.0%}", xy=(20, gain_20 * 100),
+                     xytext=(23, gain_20 * 100 - 4),
+                     fontsize=8, color=color)
+
+    ax2.set_xlabel("% of restaurants reviewed (sorted by risk)", fontsize=10)
+    ax2.set_ylabel("% of closures captured", fontsize=10)
+    ax2.set_title("Cumulative Gain (Lift) Curve", fontweight="bold")
+    ax2.legend(fontsize=9, loc="lower right")
+    ax2.set_xlim(0, 100); ax2.set_ylim(0, 100)
+
+    n_pos = int(y_test.sum())
+    plt.suptitle(
+        f"Ranking Quality — Time-Split Test Set  "
+        f"(n={n:,} · {n_pos} closures · base rate={base_rate:.1%})",
+        fontsize=11, fontweight="bold",
+    )
+    plt.tight_layout()
+    save("29_precision_at_k.png")
+
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 def main():
@@ -698,6 +786,7 @@ def main():
     plot_confusion_matrices(y_test, xgb_prob, lr_prob)
     plot_roc_standalone(y_test, xgb_prob, lr_prob)
     plot_fp_fn_profile(test_df, xgb_prob, feat_cols)
+    plot_precision_at_k(y_test, xgb_prob, lr_prob)
 
     print("\nDone.")
 
