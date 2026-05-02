@@ -131,7 +131,7 @@ def run_lomo_fold(
     Train on 8 metros, tune hyperparams on a time-based val split within
     those 8, retrain on full 8-metro pool, evaluate on held-out metro.
     """
-    print(f"\n  ── Fold: held-out = {held_out_metro} ──")
+    print(f"\n  -- Fold: held-out = {held_out_metro} --")
 
     # Build train pool from the 8 non-held-out metros
     train_pool = pd.concat(
@@ -192,7 +192,7 @@ def run_lomo_fold(
         "val_AUC_PR":   round(val_auc_pr, 4),
         "best_params":  best_params,
     }
-    print(f"    Test → AUC-PR={auc_pr:.4f}  AUC-ROC={auc_roc:.4f}  F1={f1:.4f}  n={len(held_df)}")
+    print(f"    Test: AUC-PR={auc_pr:.4f}  AUC-ROC={auc_roc:.4f}  F1={f1:.4f}  n={len(held_df)}")
     return result
 
 
