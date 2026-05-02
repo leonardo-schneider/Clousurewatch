@@ -677,13 +677,17 @@ def plot_precision_at_k(y_test: np.ndarray, xgb_prob: np.ndarray, lr_prob: np.nd
     ax.set_ylabel("Precision (fraction closed)", fontsize=10)
     ax.set_title("Precision@K — Top-K Riskiest Restaurants", fontweight="bold")
     ax.legend(fontsize=9)
-    ax.set_ylim(0, min(1.0, base_rate * 8))
+    all_prec = [y_test[np.argsort(p)[::-1]][:k].mean()
+                for p in [xgb_prob, lr_prob] for k in K_values]
+    ax.set_ylim(0, min(1.0, max(all_prec) * 1.25))
 
     # ── Panel 2: Cumulative lift / gain curve ────────────────────────────────
     ax2   = axes[1]
     n     = len(y_test)
     steps = np.arange(1, n + 1)
+    idx_20 = max(1, int(n * 0.20)) - 1
 
+    gain_curves = {}
     for label, prob, color in [
         ("XGBoost",             xgb_prob, C_XGB),
         ("Logistic Regression", lr_prob,  C_LR),
@@ -693,23 +697,15 @@ def plot_precision_at_k(y_test: np.ndarray, xgb_prob: np.ndarray, lr_prob: np.nd
         cum_closures = np.cumsum(y_sorted)
         total_closed = y_test.sum()
         gain         = cum_closures / total_closed
-        pct_reviewed = steps / n
-        ax2.plot(pct_reviewed * 100, gain * 100, color=color, linewidth=2, label=label)
+        gain_curves[label] = (gain, color)
+        ax2.plot(steps / n * 100, gain * 100, color=color, linewidth=2, label=label)
 
     ax2.plot([0, 100], [0, 100], color=C_BASE, linestyle="--", linewidth=1.2,
              label="Random baseline")
     ax2.fill_between([0, 100], [0, 100], alpha=0.04, color=C_BASE)
 
-    for label, prob, color in [
-        ("XGBoost", xgb_prob, C_XGB),
-        ("LR",      lr_prob,  C_LR),
-    ]:
-        sorted_idx    = np.argsort(prob)[::-1]
-        y_sorted      = y_test[sorted_idx]
-        cum_closures  = np.cumsum(y_sorted)
-        total_closed  = y_test.sum()
-        idx_20        = max(1, int(n * 0.20)) - 1
-        gain_20       = cum_closures[idx_20] / total_closed
+    for label, (gain, color) in gain_curves.items():
+        gain_20 = gain[idx_20]
         ax2.scatter(20, gain_20 * 100, color=color, s=70, zorder=5)
         ax2.annotate(f"{gain_20:.0%}", xy=(20, gain_20 * 100),
                      xytext=(23, gain_20 * 100 - 4),
