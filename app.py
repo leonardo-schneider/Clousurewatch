@@ -393,8 +393,12 @@ _SCORE_META = {
 @st.cache_resource
 def load_xgb_model():
     import joblib
-    # Prefer global 9-metro model; fall back to Tampa-only
-    for path in ["models/xgboost_global.pkl", "models/xgboost.pkl"]:
+    # Prefer calibrated global model; fall back through hierarchy
+    for path in [
+        "models/xgboost_global_calibrated.pkl",
+        "models/xgboost_global.pkl",
+        "models/xgboost.pkl",
+    ]:
         p = Path(path)
         if p.exists():
             return joblib.load(p)

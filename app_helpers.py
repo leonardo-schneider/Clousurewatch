@@ -82,7 +82,9 @@ def compute_shap_row(model, feature_matrix: "pd.DataFrame", business_id: str):
 
     # Use model's own feature names so the column list always matches training exactly,
     # regardless of extra columns (lat/lon, risk_score, etc.) added by the app.
-    booster = model.get_booster()
+    # CalibratedClassifierCV wraps the base XGBoost — unwrap if needed.
+    xgb_base  = getattr(model, "estimator", model)
+    booster   = xgb_base.get_booster()
     feat_cols = booster.feature_names  # list in training order
 
     feature_matrix = feature_matrix.copy()
