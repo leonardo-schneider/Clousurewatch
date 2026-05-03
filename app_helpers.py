@@ -1,5 +1,6 @@
 """Pure helper functions for the ClosureWatch dashboard. No Streamlit imports."""
 from __future__ import annotations
+import numpy as np
 import pandas as pd
 
 
@@ -126,8 +127,6 @@ def add_null_flags(df: pd.DataFrame) -> pd.DataFrame:
     missingness, so a flag lets the model learn their signal explicitly.
     Called immediately after loading any features.parquet.
     """
-    import numpy as np
-    df = df.copy()
     for col in NULL_FLAG_COLS:
         if col in df.columns:
             df[f"{col}_is_null"] = df[col].isna().astype(np.int8)
