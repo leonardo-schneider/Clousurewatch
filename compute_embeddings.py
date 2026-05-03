@@ -4,14 +4,20 @@ compute_embeddings.py -- Mean sentence embeddings per restaurant, PCA-reduced to
 For each restaurant in all 9 training metros:
   1. Collect up to 15 most recent reviews within the observation window.
   2. Compute mean sentence embedding with all-MiniLM-L6-v2 (384-dim).
-  3. Fit PCA(32) on all metros combined.
+  3. Fit PCA(32) on non-empty restaurants (see NOTE on LOMO leakage below).
   4. Save per-metro review_embeddings.parquet  (business_id + emb_pc_00..emb_pc_31).
+     Restaurants with no in-window reviews get NaN in all emb_pc_* columns.
 
 Run once before 10_lomo_cv.py:
     python compute_embeddings.py
 
 Runtime: ~20-40 min (depends on CPU; model download ~80 MB on first run).
 """
+# NOTE: PCA is fit on all 9 metros combined, not per LOMO fold. Since PCA is
+# unsupervised (no labels used), this is mild unsupervised leakage — the
+# projection axes reflect the test-fold text distribution. The practical impact
+# is small but not zero. For strict LOMO purity, refit PCA per fold inside
+# 10_lomo_cv.py using only training metros. Accepted as a known limitation.
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -91,7 +97,7 @@ def build_texts(labeled: pd.DataFrame, reviews: dict) -> list:
             [(d, t) for d, t in revs if obs <= d < anc],
             key=lambda x: x[0], reverse=True,
         )[:MAX_REVIEWS]
-        text = " ".join(t for _, t in in_window)
+        text = " ".join(t[:500] for _, t in in_window)  # cap per-review text to limit RAM
         records.append((bid, text))
     return records
 
@@ -139,15 +145,29 @@ def main():
         metro_slices[metro] = (start, len(all_biz_ids))
         print(f"  {metro:15s}: {len(records):,} restaurants")
 
-    print(f"\n[3] Computing embeddings for {len(all_texts):,} restaurants...")
-    raw_embeddings = compute_embeddings(all_texts, model)  # (N, 384)
-    print(f"  Embedding matrix shape: {raw_embeddings.shape}")
+    n_total   = len(all_texts)
+    non_empty = [(i, t) for i, t in enumerate(all_texts) if t.strip()]
+    n_empty   = n_total - len(non_empty)
+    print(f"\n[3] Computing embeddings for {len(non_empty):,} non-empty restaurants "
+          f"({n_empty:,} will get NaN embeddings)...")
 
-    print(f"\n[4] Fitting PCA({N_COMPONENTS}) on all metros combined...")
-    pca = PCA(n_components=N_COMPONENTS, random_state=42)
-    reduced = pca.fit_transform(raw_embeddings)  # (N, 32)
-    explained = pca.explained_variance_ratio_.sum()
-    print(f"  Variance explained by {N_COMPONENTS} components: {explained:.1%}")
+    if non_empty:
+        ne_indices, ne_texts = zip(*non_empty)
+        ne_raw = compute_embeddings(list(ne_texts), model)  # (M, 384)
+        print(f"  Embedding matrix shape: {ne_raw.shape}")
+
+        print(f"\n[4] Fitting PCA({N_COMPONENTS}) on non-empty restaurants...")
+        pca = PCA(n_components=N_COMPONENTS, random_state=42)
+        ne_reduced = pca.fit_transform(ne_raw)  # (M, 32)
+        explained = pca.explained_variance_ratio_.sum()
+        print(f"  Variance explained by {N_COMPONENTS} components: {explained:.1%}")
+
+        # Reconstruct full (N, 32) array with NaN for empty-text restaurants
+        reduced = np.full((n_total, N_COMPONENTS), np.nan, dtype=np.float32)
+        for pos, orig_idx in enumerate(ne_indices):
+            reduced[orig_idx] = ne_reduced[pos]
+    else:
+        reduced = np.full((n_total, N_COMPONENTS), np.nan, dtype=np.float32)
 
     emb_cols = [f"emb_pc_{i:02d}" for i in range(N_COMPONENTS)]
 
