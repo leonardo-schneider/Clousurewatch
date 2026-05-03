@@ -108,3 +108,27 @@ def compute_shap_row(model, feature_matrix: "pd.DataFrame", business_id: str):
     if arr.ndim == 2:
         arr = arr[0]
     return arr.tolist(), feat_cols
+
+
+NULL_FLAG_COLS = [
+    "vader_trend_slope",
+    "stars_delta_3m",
+    "mean_tip_compliments",
+    "checkin_velocity_slope",
+    "review_velocity_slope",
+]
+
+
+def add_null_flags(df: pd.DataFrame) -> pd.DataFrame:
+    """Add binary *_is_null indicator columns for features that are null by design.
+
+    These nulls are informative (zero tips, zero reviews, etc.) rather than random
+    missingness, so a flag lets the model learn their signal explicitly.
+    Called immediately after loading any features.parquet.
+    """
+    import numpy as np
+    df = df.copy()
+    for col in NULL_FLAG_COLS:
+        if col in df.columns:
+            df[f"{col}_is_null"] = df[col].isna().astype(np.int8)
+    return df

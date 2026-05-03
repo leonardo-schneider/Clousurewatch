@@ -19,6 +19,7 @@ from app_helpers import (
     percentile_rank,
     outcome_banner_html,
     compute_shap_row,
+    add_null_flags,
 )
 
 # Page config must be first Streamlit command.
@@ -406,7 +407,9 @@ def load_metro_features(data_dir: str) -> pd.DataFrame | None:
     feat_path = Path(data_dir) / "features.parquet"
     if not feat_path.exists():
         return None
-    df = pd.read_parquet(feat_path)
+    feat = pd.read_parquet(feat_path)
+    feat = add_null_flags(feat)
+    df = feat
 
     # Names from labeled_businesses
     lab_path = Path(data_dir) / "labeled_businesses.parquet"

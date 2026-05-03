@@ -41,6 +41,7 @@ from sklearn.metrics import (
 from xgboost import XGBClassifier
 
 from config_00 import TARGET_COL, RANDOM_SEED, MODEL_DIR, FIG_DIR
+from app_helpers import add_null_flags
 
 plt.rcParams.update({
     "font.family": "serif",
@@ -94,6 +95,7 @@ def load_all_metros() -> Dict[str, pd.DataFrame]:
                 f"Missing: {p}  -- run 09_multi_metro.py for {metro} first"
             )
         df = pd.read_parquet(p)
+        df = add_null_flags(df)
         df["metro"] = metro
         df["anchor_date"] = pd.to_datetime(df["anchor_date"])
         dfs[metro] = df
