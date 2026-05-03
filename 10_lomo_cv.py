@@ -96,6 +96,13 @@ def load_all_metros() -> Dict[str, pd.DataFrame]:
             )
         df = pd.read_parquet(p)
         df = add_null_flags(df)
+
+        # Join sentence-embedding features if available
+        emb_path = Path(directory) / "review_embeddings.parquet"
+        if emb_path.exists():
+            emb = pd.read_parquet(emb_path)
+            df  = df.merge(emb, on="business_id", how="left")
+
         df["metro"] = metro
         df["anchor_date"] = pd.to_datetime(df["anchor_date"])
         dfs[metro] = df
