@@ -533,6 +533,54 @@ def plot_confusion_matrices(y_test, xgb_prob, lr_prob):
     _plot_single_confusion(y_test, lr_prob,  "Logistic Regression", C_LR,  "25b_confusion_lr.png", "25b")
 
 
+# ── Figure 33: Standalone PR curve ───────────────────────────────────────────
+
+def plot_pr_standalone(y_test, xgb_prob, lr_prob):
+    print("[33] Standalone PR curve...")
+
+    fig, ax = plt.subplots(figsize=(7, 6))
+    base_rate = y_test.mean()
+
+    for label, prob, color in [
+        ("XGBoost",             xgb_prob, C_XGB),
+        ("Logistic Regression", lr_prob,  C_LR),
+    ]:
+        prec, rec, thr = precision_recall_curve(y_test, prob)
+        ap = average_precision_score(y_test, prob)
+        ax.plot(rec, prec, color=color, linewidth=2.5,
+                label=f"{label}  (AUC-PR = {ap:.3f})")
+
+        # Mark F1-optimal threshold
+        f1s      = 2 * prec * rec / (prec + rec + 1e-9)
+        best_idx = np.argmax(f1s[:-1])
+        ax.scatter(rec[best_idx], prec[best_idx], color=color, s=90, zorder=5)
+        ax.annotate(
+            f"t={thr[best_idx]:.2f}\nF1={f1s[best_idx]:.2f}",
+            xy=(rec[best_idx], prec[best_idx]),
+            xytext=(rec[best_idx] + 0.05, prec[best_idx] + 0.04),
+            fontsize=8.5, color=color,
+            arrowprops=dict(arrowstyle="->", color=color, lw=0.9),
+        )
+
+    ax.axhline(base_rate, color=C_BASE, linestyle="--",
+               linewidth=1.2, label=f"Random baseline ({base_rate:.1%})")
+    ax.fill_between([0, 1], [base_rate, base_rate], alpha=0.04, color=C_BASE)
+
+    ax.set_xlabel("Recall", fontsize=11)
+    ax.set_ylabel("Precision", fontsize=11)
+    ax.set_title("Precision-Recall Curve - Global Models on Time-Split Test Set",
+                 fontweight="bold", fontsize=12)
+    ax.legend(fontsize=10, loc="upper right")
+    ax.set_xlim(0, 1); ax.set_ylim(0, 1)
+
+    n_pos = int(y_test.sum())
+    ax.text(0.98, 0.08,
+            f"n={len(y_test):,}  |  {n_pos} closures ({base_rate:.1%})",
+            transform=ax.transAxes, ha="right", fontsize=9, color="#888")
+    plt.tight_layout()
+    save("33_pr_curve.png")
+
+
 # ── Figure 26: Standalone ROC-AUC curve ──────────────────────────────────────
 
 def plot_roc_standalone(y_test, xgb_prob, lr_prob):
@@ -865,6 +913,7 @@ def main():
     plot_roc_standalone(y_test, xgb_prob, lr_prob)
     plot_fp_fn_profile(test_df, xgb_prob, feat_cols)
     plot_precision_at_k(y_test, xgb_prob, lr_prob)
+    plot_pr_standalone(y_test, xgb_prob, lr_prob)
     plot_lr_scurves(all_df, lr_pipe)
 
     print("\nDone.")
