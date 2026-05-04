@@ -152,7 +152,7 @@ def plot_lomo_per_metro():
             ax.text(xi, ylim[0] + 0.01, f"{cr:.0%}",
                     ha="center", fontsize=7, color="#666")
 
-    plt.suptitle("Leave-One-Metro-Out Cross-Validation — XGBoost vs Logistic Regression",
+    plt.suptitle("Leave-One-Metro-Out Cross-Validation - XGBoost vs Logistic Regression",
                  fontsize=12, fontweight="bold")
     plt.tight_layout()
     save("20_lomo_per_metro.png")
@@ -220,7 +220,7 @@ def plot_pr_roc(train_df, test_df, feat_cols, xgb_model, lr_pipe):
 
     n_train = len(train_df); n_test = len(test_df)
     plt.suptitle(
-        f"Model Performance — Time-Split Evaluation  "
+        f"Model Performance - Time-Split Evaluation  "
         f"(train n={n_train:,} · test n={n_test:,}  |  {base_rate:.1%} closure rate)",
         fontsize=11, fontweight="bold",
     )
@@ -259,7 +259,7 @@ def plot_shap_beeswarm(test_df, xgb_model):
         color_bar_label="Feature value",
         plot_size=(10, 7),
     )
-    plt.title("SHAP Global Feature Importance — XGBoost (9-Metro Global Model)",
+    plt.title("SHAP Global Feature Importance - XGBoost (9-Metro Global Model)",
               fontweight="bold", pad=10)
     plt.tight_layout()
     save("22_shap_beeswarm.png")
@@ -299,7 +299,7 @@ def plot_feature_importance(xgb_model, lr_pipe, feat_cols):
     ax.set_yticks(x)
     ax.set_yticklabels(labels, fontsize=9)
     ax.set_xlabel("Normalised importance (0–1)", fontsize=10)
-    ax.set_title("Feature Importance — Top 15 XGBoost Features vs LR Coefficients",
+    ax.set_title("Feature Importance - Top 15 XGBoost Features vs LR Coefficients",
                  fontweight="bold")
     ax.legend(fontsize=9)
     ax.set_xlim(0, 1.05)
@@ -342,7 +342,7 @@ FEATURE_META = {
         "unit": "binary (0 / 1)",
         "desc": (
             "Whether the business has at least one Yelp photo.\n"
-            "Restaurants without photos are 30 pp more likely to close —\n"
+            "Restaurants without photos are 30 pp more likely to close -\n"
             "often poorly maintained profiles or already inactive listings."
         ),
     },
@@ -388,7 +388,7 @@ def plot_top5_feature_profiles(all_df: pd.DataFrame):
         meta = FEATURE_META[feat]
 
         if feat == "has_photo":
-            # Binary feature: grouped bar — % with photo per class
+            # Binary feature: grouped bar - % with photo per class
             pct_open   = open_df[feat].mean()
             pct_closed = closed_df[feat].mean()
             bars = ax.bar(
@@ -466,7 +466,7 @@ def plot_top5_feature_profiles(all_df: pd.DataFrame):
         )
 
     fig.suptitle(
-        "Top 5 Most Important Features — Global XGBoost Model\n"
+        "Top 5 Most Important Features - Global XGBoost Model\n"
         "Distribution by Outcome (Open vs Closed within 6 months)",
         fontsize=13, fontweight="bold", y=0.97,
     )
@@ -484,7 +484,7 @@ def _opt_threshold(y_true, y_prob):
 
 def _plot_single_confusion(y_test, prob, label, color, fig_name, fig_num):
     from sklearn.metrics import confusion_matrix
-    print(f"[{fig_num}] Confusion matrix — {label}...")
+    print(f"[{fig_num}] Confusion matrix - {label}...")
 
     thr    = _opt_threshold(y_test, prob)
     y_pred = (prob >= thr).astype(int)
@@ -517,12 +517,12 @@ def _plot_single_confusion(y_test, prob, label, color, fig_name, fig_num):
     f1   = 2 * prec * rec / (prec + rec + 1e-9)
     ap   = average_precision_score(y_test, prob)
     ax.set_title(
-        f"{label} — Confusion Matrix\n"
+        f"{label} - Confusion Matrix\n"
         f"threshold={thr:.2f}  |  Precision={prec:.2f}  Recall={rec:.2f}  "
         f"F1={f1:.2f}  AUC-PR={ap:.3f}",
         fontweight="bold", fontsize=10,
     )
-    plt.suptitle("F1-Optimal Threshold — Time-Split Test Set",
+    plt.suptitle("F1-Optimal Threshold - Time-Split Test Set",
                  fontsize=11, fontweight="bold")
     plt.tight_layout()
     save(fig_name)
@@ -568,7 +568,7 @@ def plot_roc_standalone(y_test, xgb_prob, lr_prob):
 
     ax.set_xlabel("False Positive Rate  (1 − Specificity)", fontsize=11)
     ax.set_ylabel("True Positive Rate  (Sensitivity / Recall)", fontsize=11)
-    ax.set_title("ROC-AUC Curve — Global Models on Time-Split Test Set",
+    ax.set_title("ROC-AUC Curve - Global Models on Time-Split Test Set",
                  fontweight="bold", fontsize=12)
     ax.legend(fontsize=10, loc="lower right")
     ax.set_xlim(0, 1); ax.set_ylim(0, 1)
@@ -610,14 +610,14 @@ def plot_fp_fn_profile(test_df, xgb_prob, feat_cols):
     )[:10]
 
     groups = {
-        "True Pos — caught closures":    tp_df,
-        "False Pos — false alarms":      fp_df,
-        "False Neg — missed closures":   fn_df,
+        "True Pos - caught closures":    tp_df,
+        "False Pos - false alarms":      fp_df,
+        "False Neg - missed closures":   fn_df,
     }
     colors = {
-        "True Pos — caught closures":   "#1DB954",
-        "False Pos — false alarms":     "#EF9F27",
-        "False Neg — missed closures":  "#E84855",
+        "True Pos - caught closures":   "#1DB954",
+        "False Pos - false alarms":     "#EF9F27",
+        "False Neg - missed closures":  "#E84855",
     }
 
     means = pd.DataFrame({
@@ -641,7 +641,7 @@ def plot_fp_fn_profile(test_df, xgb_prob, feat_cols):
     ax.axhline(0, color="#555", linewidth=0.8, linestyle="--")
     ax.legend(fontsize=9)
     ax.set_title(
-        f"Error Profile — What Distinguishes Caught vs Missed Closures?\n"
+        f"Error Profile - What Distinguishes Caught vs Missed Closures?\n"
         f"XGBoost at threshold={thr:.2f}  |  top 10 features by importance",
         fontweight="bold",
     )
@@ -681,7 +681,7 @@ def plot_precision_at_k(y_test: np.ndarray, xgb_prob: np.ndarray, lr_prob: np.nd
     ax.set_xticks(x)
     ax.set_xticklabels([f"@{k}" for k in K_values])
     ax.set_ylabel("Precision (fraction closed)", fontsize=10)
-    ax.set_title("Precision@K — Top-K Riskiest Restaurants", fontweight="bold")
+    ax.set_title("Precision@K - Top-K Riskiest Restaurants", fontweight="bold")
     ax.legend(fontsize=9)
     all_prec = [y_test[np.argsort(p)[::-1]][:k].mean()
                 for p in [xgb_prob, lr_prob] for k in K_values]
@@ -725,7 +725,7 @@ def plot_precision_at_k(y_test: np.ndarray, xgb_prob: np.ndarray, lr_prob: np.nd
 
     n_pos = int(y_test.sum())
     plt.suptitle(
-        f"Ranking Quality — Time-Split Test Set  "
+        f"Ranking Quality - Time-Split Test Set  "
         f"(n={n:,} · {n_pos} closures · base rate={base_rate:.1%})",
         fontsize=11, fontweight="bold",
     )
@@ -816,7 +816,7 @@ def main():
     print("STEP 11 -- Presentation Figures")
     print("=" * 60)
 
-    # Fig 20 — from saved JSON (no model needed)
+    # Fig 20 - from saved JSON (no model needed)
     plot_lomo_per_metro()
 
     # Load pooled data
@@ -832,7 +832,7 @@ def main():
     X_train = train_df[feat_cols].fillna(medians)
     y_train = train_df[TARGET_COL].values
 
-    # XGBoost — retrain on train split with LOMO-tuned params
+    # XGBoost - retrain on train split with LOMO-tuned params
     print("\n[XGB] Training fresh XGBoost on 80% split...")
     xgb_model = XGBClassifier(**XGB_PARAMS)
     xgb_model.fit(X_train, y_train)
