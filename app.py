@@ -413,6 +413,13 @@ def load_metro_features(data_dir: str) -> pd.DataFrame | None:
         return None
     feat = pd.read_parquet(feat_path)
     feat = add_null_flags(feat)
+
+    # Join sentence-embedding features if available
+    emb_path = Path(data_dir) / "review_embeddings.parquet"
+    if emb_path.exists():
+        emb  = pd.read_parquet(emb_path)
+        feat = feat.merge(emb, on="business_id", how="left")
+
     df = feat
 
     # Names from labeled_businesses
