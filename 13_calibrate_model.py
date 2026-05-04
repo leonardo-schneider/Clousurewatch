@@ -17,8 +17,9 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from pathlib import Path
-from sklearn.calibration import CalibratedClassifierCV, calibration_curve
-from app_helpers import add_null_flags
+from sklearn.calibration import calibration_curve
+from sklearn.isotonic import IsotonicRegression
+from app_helpers import add_null_flags, CalibratedXGB
 
 from config_00 import MODEL_DIR, FIG_DIR
 
@@ -111,10 +112,9 @@ def main():
           f"(true rate: {y_cal.mean():.4f})")
 
     print("\n[3] Fitting isotonic calibration on calibration set...")
-    calibrated = CalibratedClassifierCV(
-        estimator=base_model, cv="prefit", method="isotonic"
-    )
-    calibrated.fit(X_cal, y_cal)
+    iso_reg = IsotonicRegression(out_of_bounds="clip")
+    iso_reg.fit(uncal_prob, y_cal)
+    calibrated = CalibratedXGB(base_model, iso_reg)
 
     cal_prob = calibrated.predict_proba(X_cal)[:, 1]
     print(f"  Calibrated   mean predicted prob: {cal_prob.mean():.4f}  "

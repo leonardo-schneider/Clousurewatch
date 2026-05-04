@@ -69,20 +69,40 @@ def outcome_banner_html(row: pd.Series) -> str:
     )
 
 
+class CalibratedXGB:
+    """XGBoost + isotonic calibration wrapper compatible with all sklearn versions.
+
+    Avoids CalibratedClassifierCV's internal type-checking which breaks on some
+    sklearn/XGBoost version combinations. The base XGBClassifier is stored as
+    self.estimator so that compute_shap_row's getattr unwrap works correctly.
+    """
+
+    def __init__(self, xgb_model, iso_reg):
+        self.estimator = xgb_model  # getattr(model, "estimator", model) → xgb_model
+        self.iso_reg   = iso_reg
+
+    def predict_proba(self, X):
+        raw = self.estimator.predict_proba(X)[:, 1]
+        cal = np.clip(self.iso_reg.predict(raw), 0.0, 1.0)
+        return np.column_stack([1.0 - cal, cal])
+
+    def get_booster(self):
+        return self.estimator.get_booster()
+
+
 def compute_shap_row(model, feature_matrix: "pd.DataFrame", business_id: str):
     """
     Compute SHAP values for one restaurant. Returns (shap_values_list, feature_names_list)
     or (None, None) if the model or row is unavailable.
     """
     import shap
-    import numpy as np
 
     if model is None or feature_matrix is None:
         return None, None
 
     # Use model's own feature names so the column list always matches training exactly,
     # regardless of extra columns (lat/lon, risk_score, etc.) added by the app.
-    # CalibratedClassifierCV wraps the base XGBoost — unwrap if needed.
+    # CalibratedXGB stores base XGBoost as .estimator; raw XGBClassifier falls back to itself.
     xgb_base  = getattr(model, "estimator", model)
     booster   = xgb_base.get_booster()
     feat_cols = booster.feature_names  # list in training order
@@ -100,7 +120,7 @@ def compute_shap_row(model, feature_matrix: "pd.DataFrame", business_id: str):
     train_medians = train_rows[available].median()
     X = row.reindex(columns=feat_cols).fillna(train_medians)
 
-    explainer = shap.TreeExplainer(model)
+    explainer = shap.TreeExplainer(xgb_base)  # must pass raw XGBoost, not the wrapper
     sv = explainer.shap_values(X)
     # sv may be 1D array, 2D array, or list-of-arrays depending on XGBoost version
     if isinstance(sv, list):
