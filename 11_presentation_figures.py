@@ -412,23 +412,32 @@ def plot_top5_feature_profiles(all_df: pd.DataFrame):
             d_open   = open_df[feat].dropna().clip(upper=p99).values
             d_closed = closed_df[feat].dropna().clip(upper=p99).values
 
-            vp = ax.violinplot(
+            bp = ax.boxplot(
                 [d_open, d_closed], positions=[0, 1],
-                showmedians=True, showextrema=False, widths=0.7,
+                widths=0.45, patch_artist=True,
+                showfliers=False,
+                medianprops=dict(color="white", linewidth=2),
+                whiskerprops=dict(linewidth=1.2),
+                capprops=dict(linewidth=1.2),
+                boxprops=dict(linewidth=1.2),
             )
-            vp["bodies"][0].set_facecolor(C_OPEN);   vp["bodies"][0].set_alpha(0.55)
-            vp["bodies"][1].set_facecolor(C_CLOSED); vp["bodies"][1].set_alpha(0.55)
-            vp["cmedians"].set_color("white"); vp["cmedians"].set_linewidth(2)
+            bp["boxes"][0].set_facecolor(C_OPEN);   bp["boxes"][0].set_alpha(0.7)
+            bp["boxes"][1].set_facecolor(C_CLOSED); bp["boxes"][1].set_alpha(0.7)
+            for whisker in bp["whiskers"]:
+                whisker.set_color("#888")
+            for cap in bp["caps"]:
+                cap.set_color("#888")
 
             med_open   = float(np.median(d_open))
             med_closed = float(np.median(d_closed))
             p5  = float(all_df[feat].quantile(0.05))
             p95 = float(all_df[feat].quantile(0.95))
 
-            # Median labels
-            ax.text(0, med_open   + p99 * 0.04, f"med={med_open:.2f}",
+            # Median labels above the box
+            y_offset = p99 * 0.05
+            ax.text(0, med_open   + y_offset, f"med={med_open:.2f}",
                     ha="center", fontsize=8, color=C_OPEN,   fontweight="bold")
-            ax.text(1, med_closed + p99 * 0.04, f"med={med_closed:.2f}",
+            ax.text(1, med_closed + y_offset, f"med={med_closed:.2f}",
                     ha="center", fontsize=8, color=C_CLOSED, fontweight="bold")
 
             # Stats box
@@ -473,58 +482,55 @@ def _opt_threshold(y_true, y_prob):
     return float(thr[np.argmax(f1s[:-1])])
 
 
-def plot_confusion_matrices(y_test, xgb_prob, lr_prob):
-    from sklearn.metrics import confusion_matrix, classification_report
-    print("[25] Confusion matrices...")
+def _plot_single_confusion(y_test, prob, label, color, fig_name, fig_num):
+    from sklearn.metrics import confusion_matrix
+    print(f"[{fig_num}] Confusion matrix — {label}...")
 
-    thr_xgb = _opt_threshold(y_test, xgb_prob)
-    thr_lr  = _opt_threshold(y_test, lr_prob)
+    thr    = _opt_threshold(y_test, prob)
+    y_pred = (prob >= thr).astype(int)
+    cm     = confusion_matrix(y_test, y_pred)
+    tn, fp, fn, tp = cm.ravel()
+    n = len(y_test)
 
-    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+    fig, ax = plt.subplots(figsize=(6, 5))
+    ax.imshow(cm, cmap="Blues", aspect="auto")
 
-    for ax, prob, thr, label, color in [
-        (axes[0], xgb_prob, thr_xgb, "XGBoost",             C_XGB),
-        (axes[1], lr_prob,  thr_lr,  "Logistic Regression",  C_LR),
-    ]:
-        y_pred = (prob >= thr).astype(int)
-        cm     = confusion_matrix(y_test, y_pred)
-        tn, fp, fn, tp = cm.ravel()
-        n = len(y_test)
+    labels_rc = [["TN", "FP"], ["FN", "TP"]]
+    for r in range(2):
+        for c in range(2):
+            val  = cm[r, c]
+            pct  = val / n * 100
+            tag  = labels_rc[r][c]
+            dark = val > cm.max() / 2
+            ax.text(c, r,
+                    f"{tag}\n{val:,}\n({pct:.1f}%)",
+                    ha="center", va="center", fontsize=13,
+                    color="white" if dark else "#222",
+                    fontweight="bold")
 
-        # Heatmap — row = actual, col = predicted
-        im = ax.imshow(cm, cmap="Blues", aspect="auto")
+    ax.set_xticks([0, 1]); ax.set_yticks([0, 1])
+    ax.set_xticklabels(["Predicted\nOpen", "Predicted\nClosed"], fontsize=11)
+    ax.set_yticklabels(["Actual\nOpen", "Actual\nClosed"], fontsize=11)
 
-        labels_rc = [["TN", "FP"], ["FN", "TP"]]
-        for r in range(2):
-            for c in range(2):
-                val  = cm[r, c]
-                pct  = val / n * 100
-                tag  = labels_rc[r][c]
-                dark = val > cm.max() / 2
-                ax.text(c, r,
-                        f"{tag}\n{val:,}\n({pct:.1f}%)",
-                        ha="center", va="center", fontsize=12,
-                        color="white" if dark else "#222",
-                        fontweight="bold")
-
-        ax.set_xticks([0, 1]); ax.set_yticks([0, 1])
-        ax.set_xticklabels(["Predicted\nOpen", "Predicted\nClosed"], fontsize=10)
-        ax.set_yticklabels(["Actual\nOpen", "Actual\nClosed"], fontsize=10)
-
-        prec = tp / (tp + fp + 1e-9)
-        rec  = tp / (tp + fn + 1e-9)
-        f1   = 2 * prec * rec / (prec + rec + 1e-9)
-        ap   = average_precision_score(y_test, prob)
-        ax.set_title(
-            f"{label}\n"
-            f"threshold={thr:.2f}  |  Precision={prec:.2f}  Recall={rec:.2f}  F1={f1:.2f}  AUC-PR={ap:.3f}",
-            fontweight="bold", fontsize=10,
-        )
-
-    plt.suptitle("Confusion Matrices at F1-Optimal Threshold — Time-Split Test Set",
-                 fontsize=12, fontweight="bold")
+    prec = tp / (tp + fp + 1e-9)
+    rec  = tp / (tp + fn + 1e-9)
+    f1   = 2 * prec * rec / (prec + rec + 1e-9)
+    ap   = average_precision_score(y_test, prob)
+    ax.set_title(
+        f"{label} — Confusion Matrix\n"
+        f"threshold={thr:.2f}  |  Precision={prec:.2f}  Recall={rec:.2f}  "
+        f"F1={f1:.2f}  AUC-PR={ap:.3f}",
+        fontweight="bold", fontsize=10,
+    )
+    plt.suptitle("F1-Optimal Threshold — Time-Split Test Set",
+                 fontsize=11, fontweight="bold")
     plt.tight_layout()
-    save("25_confusion_matrices.png")
+    save(fig_name)
+
+
+def plot_confusion_matrices(y_test, xgb_prob, lr_prob):
+    _plot_single_confusion(y_test, xgb_prob, "XGBoost",            C_XGB, "25_confusion_xgb.png", "25a")
+    _plot_single_confusion(y_test, lr_prob,  "Logistic Regression", C_LR,  "25b_confusion_lr.png", "25b")
 
 
 # ── Figure 26: Standalone ROC-AUC curve ──────────────────────────────────────
@@ -727,6 +733,82 @@ def plot_precision_at_k(y_test: np.ndarray, xgb_prob: np.ndarray, lr_prob: np.nd
     save("29_precision_at_k.png")
 
 
+# ── Figure 31: Logistic Regression S-curves for top 3 predictors ─────────────
+
+def plot_lr_scurves(all_df: pd.DataFrame, lr_pipe):
+    print("[31] LR S-curves for top 3 predictors...")
+
+    lr       = lr_pipe["lr"]
+    scaler   = lr_pipe["scaler"]
+    feat_in  = scaler.feature_names_in_
+    coef     = lr.coef_[0]
+    medians  = pd.Series(
+        all_df[feat_in].fillna(all_df[feat_in].median()).median(),
+        index=feat_in,
+    )
+
+    # Top 3 by |coef| with meaningful spread (p5–p95 > 0)
+    TOP3 = ["n_checkins_obs", "std_stars_obs", "mean_vader"]
+    LABELS = {
+        "n_checkins_obs": "Check-in Volume (obs. window)",
+        "std_stars_obs":  "Star Rating Std Dev (obs. window)",
+        "mean_vader":     "Mean VADER Sentiment",
+    }
+    DESCS = {
+        "n_checkins_obs": "More foot-traffic activity → lower closure risk",
+        "std_stars_obs":  "Higher rating volatility → higher closure risk",
+        "mean_vader":     "More positive review sentiment → lower closure risk",
+    }
+    COLORS = [C_XGB, "#e67e22", C_LR]
+
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+
+    for ax, feat, color in zip(axes, TOP3, COLORS):
+        # Sweep feature from p5 to p95; hold all others at median
+        s       = all_df[feat].dropna()
+        lo, hi  = s.quantile(0.05), s.quantile(0.95)
+        x_vals  = np.linspace(lo, hi, 300)
+
+        X_sweep = np.tile(medians.values, (300, 1))
+        col_idx = list(feat_in).index(feat)
+        X_sweep[:, col_idx] = x_vals
+
+        probs = lr_pipe.predict_proba(X_sweep)[:, 1]
+
+        ax.plot(x_vals, probs * 100, color=color, linewidth=2.5)
+        ax.axhline(all_df["closed_within_6m"].mean() * 100,
+                   color="#888", linestyle="--", linewidth=1.2,
+                   label=f"Base rate ({all_df['closed_within_6m'].mean():.1%})")
+
+        # Mark the median value
+        med_val  = float(medians[feat])
+        med_prob = float(lr_pipe.predict_proba(
+            medians.values.reshape(1, -1)
+        )[:, 1]) * 100
+        ax.scatter([med_val], [med_prob], color=color, s=80, zorder=5)
+        ax.annotate(f"Median\n{med_val:.2f}", xy=(med_val, med_prob),
+                    xytext=(8, 6), textcoords="offset points",
+                    fontsize=8, color=color)
+
+        ax.set_xlabel(LABELS[feat], fontsize=10)
+        ax.set_ylabel("Predicted closure probability (%)", fontsize=10)
+        ax.set_title(LABELS[feat], fontweight="bold", fontsize=10)
+        ax.set_ylim(0, min(100, probs.max() * 120 * 100))
+        ax.legend(fontsize=8)
+
+        # Description subtitle
+        ax.text(0.5, -0.18, DESCS[feat], transform=ax.transAxes,
+                ha="center", fontsize=8, color="#aaa", style="italic")
+
+    plt.suptitle(
+        "Logistic Regression: Predicted Closure Probability vs Top 3 Predictors\n"
+        "(all other features held at their median)",
+        fontsize=12, fontweight="bold",
+    )
+    plt.tight_layout()
+    save("31_lr_scurves.png")
+
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 def main():
@@ -783,6 +865,7 @@ def main():
     plot_roc_standalone(y_test, xgb_prob, lr_prob)
     plot_fp_fn_profile(test_df, xgb_prob, feat_cols)
     plot_precision_at_k(y_test, xgb_prob, lr_prob)
+    plot_lr_scurves(all_df, lr_pipe)
 
     print("\nDone.")
 
