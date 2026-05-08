@@ -11,17 +11,12 @@ venv/
 .env
 .env.*
 
-# Large/raw/generated project artifacts
-data/raw/*
-data/processed/*
-models/*
-figures/*
+# Raw Yelp data (large -- download from https://www.yelp.com/dataset)
+data/raw/
+data/raw_photos/
 
-# Keep empty project directories tracked
-!data/raw/.gitkeep
-!data/processed/.gitkeep
-!models/.gitkeep
-!figures/.gitkeep
+# Keep processed parquets, models, and figures committed
+# (they are part of the submission; raw data is excluded above)
 
 # OS/editor noise
 .DS_Store

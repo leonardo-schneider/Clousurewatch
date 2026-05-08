@@ -1,0 +1,63 @@
+{
+  "split": {
+    "train_n": 14772,
+    "test_n": 3692,
+    "train_closure_rate": 0.1015,
+    "test_closure_rate": 0.062,
+    "train_date_range": [
+      "2016-01-01",
+      "2019-11-01"
+    ],
+    "test_date_range": [
+      "2019-11-01",
+      "2020-05-31"
+    ]
+  },
+  "cv_folds": 5,
+  "logistic_regression": {
+    "cv": {
+      "AUC_PR": 0.355,
+      "std": 0.0544
+    },
+    "train": {
+      "AUC_PR": 0.3715,
+      "AUC_ROC": 0.7936,
+      "F1": 0.3774,
+      "threshold": 0.7127
+    },
+    "test": {
+      "AUC_PR": 0.245,
+      "AUC_ROC": 0.8081,
+      "F1": 0.3359,
+      "threshold": 0.751
+    },
+    "best_C": 0.1
+  },
+  "xgboost": {
+    "cv": {
+      "AUC_PR": 0.4003,
+      "std": 0.0605
+    },
+    "train": {
+      "AUC_PR": 0.5621,
+      "AUC_ROC": 0.898,
+      "F1": 0.5219,
+      "threshold": 0.6879
+    },
+    "test": {
+      "AUC_PR": 0.3283,
+      "AUC_ROC": 0.8329,
+      "F1": 0.3824,
+      "threshold": 0.7106
+    },
+    "best_params": {
+      "n_estimators": 300,
+      "max_depth": 3,
+      "learning_rate": 0.05,
+      "subsample": 0.8,
+      "colsample_bytree": 0.8,
+      "min_child_weight": 3,
+      "scale_pos_weight": 10
+    }
+  }
+}
