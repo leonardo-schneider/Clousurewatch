@@ -283,20 +283,21 @@ def build_features_one(
 # Main
 # ─────────────────────────────────────────────────────────────────────────────
 
-def main():
-    print("=" * 60)
-    print("STEP 3 — Feature Engineering (leakage-safe)")
-    print("=" * 60)
+def build_metro_features(d: Path) -> pd.DataFrame:
+    """Build features for one metro directory.
 
-    labeled  = pd.read_parquet(PROC_DIR / "labeled_businesses.parquet")
-    reviews  = pd.read_parquet(PROC_DIR / "reviews.parquet")
+    Reads businesses_labeled.parquet + reviews/checkins/tips parquets
+    from *d* and returns a features DataFrame (does not write to disk).
+    """
+    labeled  = pd.read_parquet(d / "businesses_labeled.parquet")
+    reviews  = pd.read_parquet(d / "reviews.parquet")
 
-    checkins_path = PROC_DIR / "checkins.parquet"
-    tips_path     = PROC_DIR / "tips.parquet"
+    checkins_path = d / "checkins.parquet"
+    tips_path     = d / "tips.parquet"
     checkins = pd.read_parquet(checkins_path) if checkins_path.exists() else pd.DataFrame()
     tips     = pd.read_parquet(tips_path)     if tips_path.exists()     else pd.DataFrame()
 
-    print(f"\n  Building features for {len(labeled):,} businesses...")
+    print(f"    Building features for {len(labeled):,} businesses...")
 
     # Pre-group for O(1) per-business lookup
     rev_groups  = reviews.groupby("business_id")
@@ -337,22 +338,63 @@ def main():
     features = pd.DataFrame(all_feats)
 
     # ── Report coverage ────────────────────────────────────────────────────
-    print(f"\n  Feature matrix shape: {features.shape}")
+    print(f"\n    Feature matrix shape: {features.shape}")
     null_pct = features.isnull().mean().sort_values(ascending=False)
     high_null = null_pct[null_pct > 0.30]
     if not high_null.empty:
-        print("\n  High-null features (>30%):")
+        print("\n    High-null features (>30%):")
         for col, pct in high_null.items():
-            print(f"    {col:40s}  {pct:.0%} null")
+            print(f"      {col:40s}  {pct:.0%} null")
+
+    return features
+
+
+def main():
+    """Tampa-only entry point (legacy). Kept for backward compatibility."""
+    print("=" * 60)
+    print("STEP 3 — Feature Engineering (leakage-safe, Tampa)")
+    print("=" * 60)
+
+    features = build_metro_features(PROC_DIR)
 
     features.to_parquet(PROC_DIR / "features.parquet", index=False)
     print(f"\n  Saved -> {PROC_DIR}/features.parquet")
 
-    # ── Quick sanity check ─────────────────────────────────────────────────
     print(f"\n  Label balance in feature set:")
     print(f"    Closed: {features[TARGET_COL].sum():,}  ({features[TARGET_COL].mean():.1%})")
     print(f"    Open  : {(features[TARGET_COL]==0).sum():,}")
 
 
 if __name__ == "__main__":
-    main()
+    """
+    Build features for all 9 metros. Reads businesses_labeled.parquet +
+    reviews/checkins/tips parquets per metro. Writes features.parquet.
+    Run after 02_build_labels.py.
+    """
+    from pathlib import Path
+
+    METRO_DIRS = {
+        "tampa":         Path("data/processed"),
+        "philadelphia":  Path("data/processed_philly"),
+        "indianapolis":  Path("data/processed_indianapolis"),
+        "tucson":        Path("data/processed_tucson"),
+        "nashville":     Path("data/processed_nashville"),
+        "new_orleans":   Path("data/processed_new_orleans"),
+        "saint_louis":   Path("data/processed_saint_louis"),
+        "reno":          Path("data/processed_reno"),
+        "boise":         Path("data/processed_boise"),
+    }
+
+    print("Building features for all 9 metros...")
+    for metro_key, d in METRO_DIRS.items():
+        labeled_path = d / "businesses_labeled.parquet"
+        if not labeled_path.exists():
+            print(f"  [{metro_key}] SKIP -- run 02_build_labels.py first")
+            continue
+        print(f"  [{metro_key}] ...")
+        features = build_metro_features(d)
+        features.to_parquet(d / "features.parquet", index=False)
+        n = len(features)
+        n_c = int(features["closed_within_6m"].sum())
+        print(f"    {n:,} restaurants  closed={n_c} ({n_c/n:.1%})  saved -> {d}/features.parquet")
+    print("\nDone. Run 04_eda.py next.")
