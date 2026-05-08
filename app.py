@@ -395,6 +395,7 @@ def load_xgb_model():
     import joblib
     # Prefer calibrated global model; fall back through hierarchy
     for path in [
+        "models/xgboost_final.pkl",
         "models/xgboost_global_calibrated.pkl",
         "models/xgboost_global.pkl",
         "models/xgboost.pkl",
