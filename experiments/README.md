@@ -14,3 +14,4 @@ Exploratory work — not part of the main graded pipeline.
 | `12_kfold_experiment.py` | Early k-fold cross-validation experiment |
 | `13_calibrate_model.py` | Model calibration experiment |
 | `14_kfold_global.py` | Early global kfold prototype |
+| `compute_embeddings.py` | Sentence-transformer embeddings (MiniLM-L6-v2, PCA-32) for LOMO experiments |
