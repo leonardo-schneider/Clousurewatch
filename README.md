@@ -58,8 +58,10 @@ Every design decision was made to prevent temporal leakage:
 2. **All features use only data strictly before the anchor date.** No exceptions.
 
 3. **Train/test split is time-based**: earliest 80% of restaurants by anchor date → train;
-   latest 20% → test. No random splits. Random splits would let the model train on
-   future anchor dates and test on past ones.
+   latest 20% → test. No random splits. A random split would mix restaurants from
+   different time periods across train and test, giving an overly optimistic evaluation
+   that doesn't reflect how the model would perform in deployment — where it always
+   scores restaurants more recent than any it was trained on.
 
 4. **Imputation medians are fit on the training set only**, then applied to the test set.
 
@@ -88,10 +90,29 @@ rather than producing incorrect ones.
 
 ### Step 1 — Load & Filter (`01_load_filter.py`)
 
-Reads Yelp JSON for all 9 metros, applies filters:
-- Restaurant category (excludes bars-only, coffee shops, etc.)
-- Minimum 3 reviews (businesses with 1–2 reviews carry no signal)
-- Valid state/city match per metro
+Reads Yelp JSON for all 9 metros and applies two filters:
+
+| Filter | What it drops |
+|---|---|
+| City/state match | Businesses outside the target metro area |
+| Restaurant category | Bars-only, coffee shops, grocery stores, and other non-restaurant food businesses |
+
+**Filter funnel (across all 9 metros):**
+
+| Stage | Count |
+|---|---|
+| All businesses in Yelp dataset | 150,346 |
+| In the 9 target cities | ~53,375 |
+| Restaurant/food category | ~31,627 |
+| Valid anchor date 2016–2020 (label-building step) | **19,708** |
+
+The largest reduction happens during label-building (`02_build_labels.py`), not here:
+restaurants are dropped if their 80th-percentile review date falls outside the
+2016-01-01 to 2020-06-01 window, meaning they opened too recently or have too sparse
+a review history to compute a valid observation period.
+
+Note: a "minimum 3 reviews" filter is applied but has no practical effect — every
+business that appears in the Yelp dataset already has 3 or more lifetime reviews.
 
 Outputs per metro: `businesses.parquet`, `reviews.parquet`, `checkins.parquet`,
 `tips.parquet`
