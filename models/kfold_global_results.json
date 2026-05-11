@@ -1,0 +1,128 @@
+{
+  "method": "temporal_stratified_kfold",
+  "n_folds": 5,
+  "latest_anchor": "2020-06-01",
+  "n_features": 81,
+  "train_n": 14772,
+  "test_n": 3692,
+  "train_closure_rate": 0.1015,
+  "test_closure_rate": 0.062,
+  "best_params": {
+    "n_estimators": 300,
+    "max_depth": 3,
+    "learning_rate": 0.05,
+    "subsample": 0.8,
+    "colsample_bytree": 0.8,
+    "min_child_weight": 5,
+    "scale_pos_weight": 10
+  },
+  "fold_results": [
+    {
+      "fold": 1,
+      "n_train": 11817,
+      "n_val": 2955,
+      "best_val_pr": 0.3155,
+      "best_params": {
+        "n_estimators": 300,
+        "max_depth": 3,
+        "learning_rate": 0.05,
+        "subsample": 0.8,
+        "colsample_bytree": 0.8,
+        "min_child_weight": 10,
+        "scale_pos_weight": 10,
+        "eval_metric": "aucpr",
+        "random_state": 42,
+        "verbosity": 0
+      }
+    },
+    {
+      "fold": 2,
+      "n_train": 11817,
+      "n_val": 2955,
+      "best_val_pr": 0.3603,
+      "best_params": {
+        "n_estimators": 300,
+        "max_depth": 3,
+        "learning_rate": 0.05,
+        "subsample": 0.8,
+        "colsample_bytree": 0.8,
+        "min_child_weight": 10,
+        "scale_pos_weight": 10,
+        "eval_metric": "aucpr",
+        "random_state": 42,
+        "verbosity": 0
+      }
+    },
+    {
+      "fold": 3,
+      "n_train": 11818,
+      "n_val": 2954,
+      "best_val_pr": 0.4082,
+      "best_params": {
+        "n_estimators": 300,
+        "max_depth": 3,
+        "learning_rate": 0.05,
+        "subsample": 0.8,
+        "colsample_bytree": 0.8,
+        "min_child_weight": 3,
+        "scale_pos_weight": 10,
+        "eval_metric": "aucpr",
+        "random_state": 42,
+        "verbosity": 0
+      }
+    },
+    {
+      "fold": 4,
+      "n_train": 11818,
+      "n_val": 2954,
+      "best_val_pr": 0.4955,
+      "best_params": {
+        "n_estimators": 300,
+        "max_depth": 3,
+        "learning_rate": 0.05,
+        "subsample": 0.8,
+        "colsample_bytree": 0.8,
+        "min_child_weight": 5,
+        "scale_pos_weight": 10,
+        "eval_metric": "aucpr",
+        "random_state": 42,
+        "verbosity": 0
+      }
+    },
+    {
+      "fold": 5,
+      "n_train": 11818,
+      "n_val": 2954,
+      "best_val_pr": 0.4211,
+      "best_params": {
+        "n_estimators": 300,
+        "max_depth": 3,
+        "learning_rate": 0.05,
+        "subsample": 0.8,
+        "colsample_bytree": 0.8,
+        "min_child_weight": 10,
+        "scale_pos_weight": 10,
+        "eval_metric": "aucpr",
+        "random_state": 42,
+        "verbosity": 0
+      }
+    }
+  ],
+  "test_metrics": {
+    "AUC_PR": 0.3246,
+    "AUC_ROC": 0.8339,
+    "F1": 0.3801,
+    "threshold": 0.7386
+  },
+  "leakage_notes": {
+    "excluded_meta_cols": [
+      "anchor_date",
+      "business_id",
+      "city",
+      "closed_within_6m",
+      "metro",
+      "state"
+    ],
+    "stars_yelp_global": "mild leakage: Yelp aggregate includes post-anchor reviews"
+  }
+}

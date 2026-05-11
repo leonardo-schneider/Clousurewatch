@@ -1,0 +1,32 @@
+{
+  "duplicates": {
+    "n_duplicates": 0,
+    "ok": true
+  },
+  "covid": {
+    "n_covid_anchors": 1576,
+    "pct_covid": 0.3064,
+    "n_non_covid": 3567,
+    "closure_rate_covid": 0.085,
+    "closure_rate_non_covid": 0.0538
+  },
+  "price_range": {
+    "n_invalid": 0,
+    "invalid_values": [],
+    "ok": true
+  },
+  "outliers": {
+    "n_outlier_rows": 1140,
+    "by_feature": {
+      "checkin_velocity": 238,
+      "days_since_last_review": 292,
+      "n_checkins_obs": 238,
+      "n_reviews_obs": 186,
+      "review_velocity": 186
+    }
+  },
+  "schema": {
+    "issues": [],
+    "ok": true
+  }
+}

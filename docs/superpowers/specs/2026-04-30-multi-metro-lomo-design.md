@@ -1,4 +1,4 @@
-# Multi-Metro Pipeline + LOMO CV — Design Spec
+'# Multi-Metro Pipeline + LOMO CV — Design Spec
 
 **Date:** 2026-04-30
 **Project:** Restaurant Failure Prediction (Yelp Academic Dataset)

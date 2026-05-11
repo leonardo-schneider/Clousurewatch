@@ -1,0 +1,288 @@
+{
+  "folds": [
+    {
+      "fold": 1,
+      "n_train": 16617,
+      "n_test": 1847,
+      "closure_rate": 0.0937,
+      "metro_mix": {
+        "philadelphia": 410,
+        "tampa": 389,
+        "indianapolis": 240,
+        "tucson": 188,
+        "nashville": 176,
+        "new_orleans": 168,
+        "saint_louis": 140,
+        "reno": 77,
+        "boise": 59
+      },
+      "xgb": {
+        "AUC_PR": 0.3862,
+        "AUC_ROC": 0.7697,
+        "F1": 0.3963
+      },
+      "lr": {
+        "AUC_PR": 0.2968,
+        "AUC_ROC": 0.7473,
+        "F1": 0.3343
+      }
+    },
+    {
+      "fold": 2,
+      "n_train": 16617,
+      "n_test": 1847,
+      "closure_rate": 0.0937,
+      "metro_mix": {
+        "philadelphia": 420,
+        "tampa": 391,
+        "indianapolis": 203,
+        "tucson": 189,
+        "nashville": 189,
+        "new_orleans": 173,
+        "saint_louis": 129,
+        "reno": 89,
+        "boise": 64
+      },
+      "xgb": {
+        "AUC_PR": 0.3618,
+        "AUC_ROC": 0.8006,
+        "F1": 0.4025
+      },
+      "lr": {
+        "AUC_PR": 0.3747,
+        "AUC_ROC": 0.8006,
+        "F1": 0.4279
+      }
+    },
+    {
+      "fold": 3,
+      "n_train": 16617,
+      "n_test": 1847,
+      "closure_rate": 0.0937,
+      "metro_mix": {
+        "philadelphia": 434,
+        "tampa": 396,
+        "indianapolis": 208,
+        "nashville": 181,
+        "tucson": 180,
+        "new_orleans": 167,
+        "saint_louis": 119,
+        "reno": 101,
+        "boise": 61
+      },
+      "xgb": {
+        "AUC_PR": 0.3086,
+        "AUC_ROC": 0.766,
+        "F1": 0.3318
+      },
+      "lr": {
+        "AUC_PR": 0.2833,
+        "AUC_ROC": 0.7481,
+        "F1": 0.3306
+      }
+    },
+    {
+      "fold": 4,
+      "n_train": 16617,
+      "n_test": 1847,
+      "closure_rate": 0.0937,
+      "metro_mix": {
+        "philadelphia": 429,
+        "tampa": 390,
+        "indianapolis": 211,
+        "tucson": 183,
+        "nashville": 182,
+        "new_orleans": 171,
+        "saint_louis": 107,
+        "reno": 101,
+        "boise": 73
+      },
+      "xgb": {
+        "AUC_PR": 0.3656,
+        "AUC_ROC": 0.778,
+        "F1": 0.3705
+      },
+      "lr": {
+        "AUC_PR": 0.3561,
+        "AUC_ROC": 0.7775,
+        "F1": 0.3626
+      }
+    },
+    {
+      "fold": 5,
+      "n_train": 16618,
+      "n_test": 1846,
+      "closure_rate": 0.0932,
+      "metro_mix": {
+        "philadelphia": 429,
+        "tampa": 413,
+        "indianapolis": 205,
+        "nashville": 169,
+        "tucson": 167,
+        "new_orleans": 166,
+        "saint_louis": 119,
+        "reno": 101,
+        "boise": 77
+      },
+      "xgb": {
+        "AUC_PR": 0.3589,
+        "AUC_ROC": 0.7648,
+        "F1": 0.3422
+      },
+      "lr": {
+        "AUC_PR": 0.2906,
+        "AUC_ROC": 0.7282,
+        "F1": 0.3036
+      }
+    },
+    {
+      "fold": 6,
+      "n_train": 16618,
+      "n_test": 1846,
+      "closure_rate": 0.0932,
+      "metro_mix": {
+        "philadelphia": 448,
+        "tampa": 395,
+        "indianapolis": 204,
+        "tucson": 192,
+        "new_orleans": 178,
+        "nashville": 152,
+        "saint_louis": 138,
+        "reno": 79,
+        "boise": 60
+      },
+      "xgb": {
+        "AUC_PR": 0.3551,
+        "AUC_ROC": 0.8081,
+        "F1": 0.3875
+      },
+      "lr": {
+        "AUC_PR": 0.2949,
+        "AUC_ROC": 0.7858,
+        "F1": 0.3473
+      }
+    },
+    {
+      "fold": 7,
+      "n_train": 16618,
+      "n_test": 1846,
+      "closure_rate": 0.0937,
+      "metro_mix": {
+        "philadelphia": 406,
+        "tampa": 376,
+        "indianapolis": 201,
+        "tucson": 191,
+        "nashville": 181,
+        "new_orleans": 178,
+        "saint_louis": 123,
+        "reno": 118,
+        "boise": 72
+      },
+      "xgb": {
+        "AUC_PR": 0.3789,
+        "AUC_ROC": 0.777,
+        "F1": 0.3782
+      },
+      "lr": {
+        "AUC_PR": 0.267,
+        "AUC_ROC": 0.7565,
+        "F1": 0.3285
+      }
+    },
+    {
+      "fold": 8,
+      "n_train": 16618,
+      "n_test": 1846,
+      "closure_rate": 0.0937,
+      "metro_mix": {
+        "philadelphia": 431,
+        "tampa": 392,
+        "indianapolis": 194,
+        "new_orleans": 186,
+        "tucson": 185,
+        "nashville": 180,
+        "saint_louis": 145,
+        "reno": 83,
+        "boise": 50
+      },
+      "xgb": {
+        "AUC_PR": 0.387,
+        "AUC_ROC": 0.8212,
+        "F1": 0.402
+      },
+      "lr": {
+        "AUC_PR": 0.3448,
+        "AUC_ROC": 0.7985,
+        "F1": 0.3649
+      }
+    },
+    {
+      "fold": 9,
+      "n_train": 16618,
+      "n_test": 1846,
+      "closure_rate": 0.0937,
+      "metro_mix": {
+        "philadelphia": 453,
+        "tampa": 381,
+        "new_orleans": 209,
+        "indianapolis": 204,
+        "tucson": 175,
+        "nashville": 172,
+        "saint_louis": 117,
+        "reno": 76,
+        "boise": 59
+      },
+      "xgb": {
+        "AUC_PR": 0.3913,
+        "AUC_ROC": 0.7938,
+        "F1": 0.4018
+      },
+      "lr": {
+        "AUC_PR": 0.3233,
+        "AUC_ROC": 0.7705,
+        "F1": 0.3632
+      }
+    },
+    {
+      "fold": 10,
+      "n_train": 16618,
+      "n_test": 1846,
+      "closure_rate": 0.0937,
+      "metro_mix": {
+        "philadelphia": 398,
+        "tampa": 376,
+        "indianapolis": 228,
+        "nashville": 194,
+        "new_orleans": 190,
+        "tucson": 175,
+        "saint_louis": 137,
+        "reno": 96,
+        "boise": 52
+      },
+      "xgb": {
+        "AUC_PR": 0.3627,
+        "AUC_ROC": 0.7884,
+        "F1": 0.3722
+      },
+      "lr": {
+        "AUC_PR": 0.3219,
+        "AUC_ROC": 0.7699,
+        "F1": 0.3575
+      }
+    }
+  ],
+  "aggregate": {
+    "xgb": {
+      "mean_AUC_PR": 0.3656,
+      "std_AUC_PR": 0.0227,
+      "mean_AUC_ROC": 0.7868,
+      "std_AUC_ROC": 0.0181
+    },
+    "lr": {
+      "mean_AUC_PR": 0.3153,
+      "std_AUC_PR": 0.033,
+      "mean_AUC_ROC": 0.7683,
+      "std_AUC_ROC": 0.0222
+    }
+  }
+}

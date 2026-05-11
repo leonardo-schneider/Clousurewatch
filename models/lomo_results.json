@@ -1,0 +1,222 @@
+{
+  "folds": [
+    {
+      "metro": "tampa",
+      "n": 5143,
+      "closure_rate": 0.0634,
+      "xgb": {
+        "AUC_PR": 0.1299,
+        "AUC_ROC": 0.6983,
+        "F1": 0.1549
+      },
+      "xgb_cal": {
+        "AUC_PR": 0.1166,
+        "AUC_ROC": 0.6879,
+        "F1": 0.1228
+      },
+      "lr": {
+        "AUC_PR": 0.1307,
+        "AUC_ROC": 0.7068,
+        "F1": 0.1667
+      }
+    },
+    {
+      "metro": "philadelphia",
+      "n": 4258,
+      "closure_rate": 0.1069,
+      "xgb": {
+        "AUC_PR": 0.3932,
+        "AUC_ROC": 0.7887,
+        "F1": 0.3683
+      },
+      "xgb_cal": {
+        "AUC_PR": 0.3821,
+        "AUC_ROC": 0.7899,
+        "F1": 0.382
+      },
+      "lr": {
+        "AUC_PR": 0.3442,
+        "AUC_ROC": 0.7865,
+        "F1": 0.3487
+      }
+    },
+    {
+      "metro": "indianapolis",
+      "n": 2098,
+      "closure_rate": 0.1187,
+      "xgb": {
+        "AUC_PR": 0.4532,
+        "AUC_ROC": 0.7914,
+        "F1": 0.3925
+      },
+      "xgb_cal": {
+        "AUC_PR": 0.4203,
+        "AUC_ROC": 0.7901,
+        "F1": 0.4031
+      },
+      "lr": {
+        "AUC_PR": 0.3979,
+        "AUC_ROC": 0.7846,
+        "F1": 0.3993
+      }
+    },
+    {
+      "metro": "tucson",
+      "n": 1825,
+      "closure_rate": 0.103,
+      "xgb": {
+        "AUC_PR": 0.3916,
+        "AUC_ROC": 0.8017,
+        "F1": 0.3964
+      },
+      "xgb_cal": {
+        "AUC_PR": 0.3831,
+        "AUC_ROC": 0.8089,
+        "F1": 0.4208
+      },
+      "lr": {
+        "AUC_PR": 0.3794,
+        "AUC_ROC": 0.7981,
+        "F1": 0.4282
+      }
+    },
+    {
+      "metro": "nashville",
+      "n": 1776,
+      "closure_rate": 0.103,
+      "xgb": {
+        "AUC_PR": 0.3646,
+        "AUC_ROC": 0.8025,
+        "F1": 0.375
+      },
+      "xgb_cal": {
+        "AUC_PR": 0.3442,
+        "AUC_ROC": 0.8022,
+        "F1": 0.3374
+      },
+      "lr": {
+        "AUC_PR": 0.3282,
+        "AUC_ROC": 0.7794,
+        "F1": 0.3198
+      }
+    },
+    {
+      "metro": "new_orleans",
+      "n": 1786,
+      "closure_rate": 0.126,
+      "xgb": {
+        "AUC_PR": 0.5156,
+        "AUC_ROC": 0.8383,
+        "F1": 0.4866
+      },
+      "xgb_cal": {
+        "AUC_PR": 0.4817,
+        "AUC_ROC": 0.8356,
+        "F1": 0.452
+      },
+      "lr": {
+        "AUC_PR": 0.4816,
+        "AUC_ROC": 0.8264,
+        "F1": 0.4622
+      }
+    },
+    {
+      "metro": "saint_louis",
+      "n": 1274,
+      "closure_rate": 0.0691,
+      "xgb": {
+        "AUC_PR": 0.2829,
+        "AUC_ROC": 0.7621,
+        "F1": 0.2751
+      },
+      "xgb_cal": {
+        "AUC_PR": 0.2711,
+        "AUC_ROC": 0.7787,
+        "F1": 0.2651
+      },
+      "lr": {
+        "AUC_PR": 0.2084,
+        "AUC_ROC": 0.7346,
+        "F1": 0.264
+      }
+    },
+    {
+      "metro": "reno",
+      "n": 921,
+      "closure_rate": 0.0912,
+      "xgb": {
+        "AUC_PR": 0.4815,
+        "AUC_ROC": 0.8321,
+        "F1": 0.4615
+      },
+      "xgb_cal": {
+        "AUC_PR": 0.4272,
+        "AUC_ROC": 0.826,
+        "F1": 0.4651
+      },
+      "lr": {
+        "AUC_PR": 0.418,
+        "AUC_ROC": 0.8139,
+        "F1": 0.4215
+      }
+    },
+    {
+      "metro": "boise",
+      "n": 627,
+      "closure_rate": 0.0941,
+      "xgb": {
+        "AUC_PR": 0.3071,
+        "AUC_ROC": 0.7475,
+        "F1": 0.3243
+      },
+      "xgb_cal": {
+        "AUC_PR": 0.2971,
+        "AUC_ROC": 0.7542,
+        "F1": 0.3333
+      },
+      "lr": {
+        "AUC_PR": 0.2639,
+        "AUC_ROC": 0.7526,
+        "F1": 0.3185
+      }
+    }
+  ],
+  "aggregate": {
+    "xgb": {
+      "mean_AUC_PR": 0.3688,
+      "std_AUC_PR": 0.1109,
+      "mean_AUC_ROC": 0.7847,
+      "std_AUC_ROC": 0.041
+    },
+    "xgb_cal": {
+      "mean_AUC_PR": 0.347,
+      "std_AUC_PR": 0.1021,
+      "mean_AUC_ROC": 0.7859,
+      "std_AUC_ROC": 0.0416
+    },
+    "lr": {
+      "mean_AUC_PR": 0.328,
+      "std_AUC_PR": 0.1037,
+      "mean_AUC_ROC": 0.7759,
+      "std_AUC_ROC": 0.0361
+    }
+  },
+  "global_model": {
+    "train_metros": 9,
+    "test_metro": "edmonton",
+    "n": 1971,
+    "closure_rate": 0.1213,
+    "xgb": {
+      "AUC_PR": 0.2509,
+      "AUC_ROC": 0.6758
+    },
+    "xgb_cal": {
+      "AUC_PR": 0.2343,
+      "AUC_ROC": 0.6697
+    },
+    "lr": {
+      "AUC_PR": 0.1935,
+      "AUC_ROC": 0.5973
+    }
+  }
+}

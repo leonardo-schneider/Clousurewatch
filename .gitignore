@@ -15,8 +15,18 @@ venv/
 data/raw/
 data/raw_photos/
 
-# Keep processed parquets, models, and figures committed
-# (they are part of the submission; raw data is excluded above)
+# reviews.parquet files exceed GitHub 100MB limit -- regenerate from raw data
+data/processed*/reviews.parquet
+
+# macOS artifacts
+data/__MACOSX/
+
+# Not needed for submission
+data/processed/ensemble_predictions.parquet
+
+# Internal tooling / logs
+.superpowers/
+*.log
 
 # OS/editor noise
 .DS_Store
