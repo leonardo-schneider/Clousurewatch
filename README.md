@@ -1,7 +1,7 @@
 # ClosureWatch — Restaurant Closure Prediction
 
 Binary classification: given 12 months of Yelp behavioral signals for a restaurant,
-predict whether it will permanently close in the next 6 months.
+predict whether it will show closure-like inactivity in the next 6 month.
 
 Framed as an SME credit underwriting problem — alternative lenders (Kabbage, BlueVine)
 use public behavioral signals the same way banks use transaction history. If you can
@@ -49,7 +49,7 @@ Restaurant closure prediction is a classic imbalanced classification problem:
                                                         80th pct review date
 ```
 
-Every design decision was made to prevent temporal leakage:
+Every design decision was made to reduce temporal leakage:
 
 1. **Anchor date = 80th percentile review date**, not the last review. Using the last
    review would let the feature window "see" near-present activity, biasing the model
