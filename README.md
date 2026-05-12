@@ -241,17 +241,12 @@ Random baseline AUC-PR ≈ 0.062 (closure rate). Both models substantially excee
 
 ### Interpreting the Overfitting
 
-XGBoost shows a meaningful train-to-test gap in AUC-PR (0.562 → 0.328, ~42%). Two
+XGBoost shows a meaningful train-to-test gap in AUC-PR (0.562 → 0.328, ~42%). One
 factors contribute:
 
 1. **Model variance:** XGBoost with `scale_pos_weight=10` tends to memorize minority
    class patterns in the training folds. Higher `min_child_weight` or lower `max_depth`
    would close this gap at some cost to test performance.
-
-2. **Distribution shift:** The test set has a lower closure rate (6.2% vs 10.1% in
-   train) because it contains later anchor dates — a real temporal shift, not a sampling
-   artifact. AUC-PR is sensitive to base rate changes, so part of the gap reflects
-   this shift rather than true overfitting.
 
 The AUC-ROC gap is much smaller (0.898 → 0.833), suggesting the model's *ranking*
 generalizes well — it's the *calibration* that degrades. For the underwriting use case
